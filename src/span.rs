@@ -1,219 +1,305 @@
-use traits::{Haystack, HaystackMut};
-use std::{fmt, ptr, slice};
+use haystack::{Haystack, HaystackMut};
+use cursor::{Cursor, Origin, SharedOrigin, MutOrigin};
+use std::{fmt, mem};
 use std::ops::Range;
 
-pub struct Span<H>
+/// A span covers a continuous subsequence of a haystack, bounded by a "start"
+/// and "end" cursor.
+pub struct Span<'h, H>
 where
     H: Haystack + ?Sized,
 {
-    // unfortunately Range isn't Copy :(
-    haystack_start: *const H::Item,
-    haystack_end: *const H::Item,
-    start: *const H::Item,
-    end: *const H::Item,
+    start: Cursor<'h, H>,
+    end: Cursor<'h, H>,
 }
 
-impl<H: Haystack + ?Sized> Clone for Span<H> {
-    fn clone(&self) -> Self { *self }
-}
-impl<H: Haystack + ?Sized> Copy for Span<H> {
-}
-
-impl<H: Haystack + ?Sized> PartialEq for Span<H> {
-    fn eq(&self, other: &Self) -> bool {
-        self.haystack_start == other.haystack_start &&
-            self.haystack_end == other.haystack_end &&
-            self.start == other.start &&
-            self.end == other.end
-    }
-}
-impl<H: Haystack + ?Sized> Eq for Span<H> {}
-
-impl<H: Haystack + ?Sized> fmt::Debug for Span<H> {
+impl<'h, H> fmt::Debug for Span<'h, H>
+where
+    H: Haystack + ?Sized,
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Span")
-            .field("haystack", &(self.haystack_start..self.haystack_end))
-            .field("range", &(self.start..self.end))
+        f.debug_tuple("Span")
+            .field(&(self.start..self.end))
             .finish()
     }
 }
 
-impl<H: Haystack + ?Sized> Span<H> {
+impl<'h, H> Span<'h, H>
+where
+    H: Haystack + ?Sized,
+{
+    /// Creates a new span from the haystack.
     #[inline]
-    pub fn full(haystack: &H) -> Self {
-        let range = haystack.cursor_range();
-        Span {
-            haystack_start: range.start,
-            haystack_end: range.end,
-            start: range.start,
-            end: range.end,
+    pub fn new(haystack: &'h H) -> Self {
+        let (start, end) = haystack.as_span_raw();
+        unsafe {
+            Span {
+                start: Cursor::new_unchecked(start),
+                end: Cursor::new_unchecked(end),
+            }
         }
     }
 
+    /// Creates a new span and obtains the origin of a haystack.
     #[inline]
-    pub unsafe fn with_range_unchecked(&self, range: Range<*const H::Item>) -> Self {
-        Span {
-            haystack_start: self.haystack_start,
-            haystack_end: self.haystack_end,
-            start: range.start,
-            end: range.end,
-        }
+    pub fn and_origin(haystack: &'h H) -> (Self, SharedOrigin<'h, H>) {
+        (Self::new(haystack), SharedOrigin::new(haystack))
     }
 
-    pub fn with_range(&self, range: Range<*const H::Item>) -> Option<Self> {
-        if self.haystack_start <= range.start && range.start <= range.end && range.end <= self.haystack_end {
-            Some(unsafe { self.with_range_unchecked(range) })
-        } else {
-            None
-        }
+    /// Returns the index of the start cursor.
+    #[inline]
+    pub fn to_index<O>(&self, origin: O) -> usize
+    where
+        O: Origin<'h, H>,
+    {
+        self.start.to_index(origin)
     }
 
-    pub fn to_offset(&self) -> usize {
-        unsafe {
-            H::start_cursor_to_offset(self.haystack_start..self.haystack_end, self.start)
-        }
+    /// Returns the index range.
+    #[inline]
+    pub fn to_range<O>(&self, origin: O) -> Range<usize>
+    where
+        O: Origin<'h, H>,
+    {
+        let start = self.start.to_index(origin);
+        let end = self.end.to_index(origin);
+        start..end
     }
 
-    pub fn to_offset_range(&self) -> Range<usize> {
-        unsafe {
-            let haystack = self.haystack_start..self.haystack_end;
-            let start = H::start_cursor_to_offset(haystack.clone(), self.start);
-            let end = H::end_cursor_to_offset(haystack, self.end);
-            start..end
-        }
-    }
-
-    pub fn range(&self) -> Range<*const H::Item> {
-        self.start..self.end
-    }
-
-    pub fn start(&self) -> *const H::Item {
+    /// Returns the start cursor.
+    #[inline]
+    pub fn start(&self) -> Cursor<'h, H> {
         self.start
     }
 
-    pub fn end(&self) -> *const H::Item {
+    /// Returns the end cursor.
+    #[inline]
+    pub fn end(&self) -> Cursor<'h, H> {
         self.end
     }
 
-    pub unsafe fn split_off_from_start_unchecked(&mut self, count: usize) -> Span<H> {
-        let haystack = self.haystack_start..self.haystack_end;
-        let old_start = self.start;
-        self.start = self.start.add(count);
-        let old_end = H::start_to_end_cursor(haystack, self.start);
-        self.with_range_unchecked(old_start..old_end)
+    #[inline]
+    fn validate_cursor(&self, cursor: Cursor<'h, H>) {
+        debug_assert!(self.start <= cursor, "Cursor before start of span");
+        debug_assert!(cursor <= self.end, "Cursor after end of span");
     }
 
-    pub unsafe fn inc_start(&mut self, count: usize) {
-        self.start = self.start.add(count);
-    }
-
-    pub unsafe fn dec_end(&mut self, count: usize) {
-        self.end = self.end.sub(count);
-    }
-
-    pub fn to_haystack(&self) -> &'a H {
-        unsafe {
-            H::from_cursor_range(self.start..self.end)
+    /// Splits this span into two parts, returns the starting part, and update
+    /// `self` to become the ending part.
+    ///
+    /// If this span was `start..end`, this method will set the span to
+    /// `cursor..end` and return `start..cursor`.
+    ///
+    /// # Safety
+    ///
+    /// The cursor should be valid (points to sequence boundaries) and lies
+    /// between `start..end` of the current span.
+    #[inline]
+    pub fn remove_start(&mut self, cursor: Cursor<'h, H>) -> Self {
+        self.validate_cursor(cursor);
+        Span {
+            start: mem::replace(&mut self.start, cursor),
+            end: cursor,
         }
     }
 
-    pub fn to_slice(&self) -> &'a [H::Item] {
-        unsafe {
-            let len = self.end.offset_from(self.start) as usize;
-            slice::from_raw_parts(self.start, len)
+    /// Splits this span into two parts, returns the ending part, and update
+    /// `self` to become the starting part.
+    ///
+    /// If this span was `start..end`, this method will set the span to
+    /// `start..cursor` and return `cursor..end`.
+    ///
+    /// # Safety
+    ///
+    /// The cursor should be valid (points to sequence boundaries) and lies
+    /// between `start..end` of the current span.
+    #[inline]
+    pub fn remove_end(&mut self, cursor: Cursor<'h, H>) -> Self {
+        self.validate_cursor(cursor);
+        Span {
+            start: cursor,
+            end: mem::replace(&mut self.end, cursor),
         }
     }
 
+    #[inline]
+    fn validate_span(&self, c1: Cursor<'h, H>, c2: Cursor<'h, H>) {
+        debug_assert!(self.start <= c1, "First cursor before start of span");
+        debug_assert!(c1 <= c2, "Cursors not in correct order");
+        debug_assert!(c2 <= self.end, "Second cursor after end of span");
+    }
+
+    /// Takes a subspan between two cursors from this span, and update `self` to
+    /// the end of the subspan.
+    ///
+    /// If this span was `start..end`, this method will set the span to
+    /// `c2..end` and return `c1..c2`.
+    ///
+    /// # Safety
+    ///
+    /// The cursors should be valid (points to sequence boundaries), lie between
+    /// `start..end` of the current span, and `c1` should be positioned before
+    /// `c2`.
+    #[inline]
+    pub fn take_from_start(&mut self, c1: Cursor<'h, H>, c2: Cursor<'h, H>) -> Self {
+        self.validate_span(c1, c2);
+        self.start = c2;
+        Span {
+            start: c1,
+            end: c2,
+        }
+    }
+
+    #[inline]
+    pub unsafe fn take_from_start_unchecked(&mut self, c1: H::Cursor, c2: H::Cursor) -> Self {
+        let c1 = Cursor::new_unchecked(c1);
+        let c2 = Cursor::new_unchecked(c2);
+        self.start = c2;
+        Span {
+            start: c1,
+            end: c2,
+        }
+    }
+
+    /// Takes a subspan between two cursors from this span, and update `self` to
+    /// the start of the subspan.
+    ///
+    /// If this span was `start..end`, this method will set the span to
+    /// `start..c1` and return `c1..c2`.
+    ///
+    /// # Safety
+    ///
+    /// The cursors should be valid (points to sequence boundaries), lie between
+    /// `start..end` of the current span, and `c1` should be positioned before
+    /// `c2`.
+    #[inline]
+    pub fn take_from_end(&mut self, c1: Cursor<'h, H>, c2: Cursor<'h, H>) -> Self {
+        self.validate_span(c1, c2);
+        self.end = c1;
+        Span {
+            start: c1,
+            end: c2,
+        }
+    }
+
+    #[inline]
+    pub unsafe fn take_from_end_unchecked(&mut self, c1: H::Cursor, c2: H::Cursor) -> Self {
+        let c1 = Cursor::new_unchecked(c1);
+        let c2 = Cursor::new_unchecked(c2);
+        self.end = c1;
+        Span {
+            start: c1,
+            end: c2,
+        }
+    }
+
+    /// Takes a subspan to the first cursor, and update `self` to start from the
+    /// second cursor.
+    ///
+    /// If this span was `start..end`, this method will set the span to
+    /// `c2..end` and return `start..c1`.
+    ///
+    ///  # Safety
+    ///
+    /// The cursors should be valid (points to sequence boundaries), lie between
+    /// `start..end` of the current span, and `c1` should be positioned before
+    /// `c2`.
+    pub fn cut_from_start(&mut self, c1: Cursor<'h, H>, c2: Cursor<'h, H>) -> Self {
+        self.validate_span(c1, c2);
+        Span {
+            start: mem::replace(&mut self.start, c2),
+            end: c1,
+        }
+    }
+
+    /// Takes a subspan from the second cursor, and update `self` to end until
+    /// first cursor.
+    ///
+    /// If this span was `start..end`, this method will set the span to
+    /// `start..c1` and return `c2..end`.
+    ///
+    ///  # Safety
+    ///
+    /// The cursors should be valid (points to sequence boundaries), lie between
+    /// `start..end` of the current span, and `c1` should be positioned before
+    /// `c2`.
+    pub fn cut_from_end(&mut self, c1: Cursor<'h, H>, c2: Cursor<'h, H>) -> Self {
+        self.validate_span(c1, c2);
+        Span {
+            start: c1,
+            end: mem::replace(&mut self.end, c2),
+        }
+    }
+
+    /// Collapses this span to an empty span pointing to the original end.
+    pub fn collapse_to_end(&mut self) {
+        self.start = self.end;
+    }
+
+    /// Collapses this span to an empty span pointing to the original start.
+    pub fn collapse_to_start(&mut self) {
+        self.end = self.start;
+    }
+
+    /// Checks whether this span is empty.
     pub fn is_empty(&self) -> bool {
-        unsafe {
-            self.haystack.start_to_end_cursor(self.start) == self.end
+        self.start == self.end
+    }
+
+    /// Clones this span.
+    ///
+    /// # Safety
+    ///
+    /// This method is unsafe because a span can be used to represent a mutable
+    /// haystack e.g. `&mut H`. In this case, cloning the span will allow
+    /// external code to create mutable aliases via [`to_haystack_mut`].
+    ///
+    /// This method requires the caller to adhere one the following conditions:
+    ///
+    /// * The source haystack is immutable e.g. `&H`, or
+    /// * The `to_haystack_mut` method is only called on `self`, and none of its
+    ///     clones, or
+    /// * The `to_haystack_mut` method is only called on the clone, and not
+    ///     `self`.
+    pub unsafe fn clone(&self) -> Self {
+        Span {
+            start: self.start,
+            end: self.end,
         }
     }
 
-    /// `(a..b).split(c..d) == (a..c, d..b)`
-    pub fn split(&self, other: &Span<'a, H>) -> (Span<'a, H>, Span<'a, H>) {
-        debug_assert!(ptr::eq(self.haystack, other.haystack));
-        debug_assert!(self.start <= other.start);
-        debug_assert!(other.end <= self.end);
-
+    /// Retrieves the original haystack.
+    pub fn to_haystack(self, origin: SharedOrigin<'h, H>) -> &'h H {
         unsafe {
-            let left_end = self.haystack.start_to_end_cursor(other.start);
-            let right_start = self.haystack.end_to_start_cursor(other.end);
+            H::from_span_raw(origin.raw(), self.start.raw(), self.end.raw())
+        }
+    }
+}
+
+impl<'h, H> Span<'h, H>
+where
+    H: HaystackMut + ?Sized,
+{
+    /// Creates a new span and obtains the origin of a mutable haystack.
+    #[inline]
+    pub fn and_origin_mut(haystack: &'h mut H) -> (Self, MutOrigin<'h, H>) {
+        let (start, end) = haystack.as_span_raw();
+        unsafe {
             (
-                self.with_cursor_range(self.start..left_end),
-                self.with_cursor_range(right_start..self.end),
+                Span {
+                    start: Cursor::new_unchecked(start),
+                    end: Cursor::new_unchecked(end),
+                },
+                MutOrigin::new(haystack),
             )
         }
     }
 
-    fn is_followed_by(&self, other: &Span<'a, H>) -> bool {
-        debug_assert!(ptr::eq(self.haystack, other.haystack));
+    /// Retrieves the original mutable haystack.
+    #[inline]
+    pub fn to_haystack_mut(self, origin: MutOrigin<'h, H>) -> &'h mut H {
         unsafe {
-            self.end == other.haystack.start_to_end_cursor(other.start)
+            H::from_span_raw_mut(origin.raw(), self.start.raw(), self.end.raw())
         }
-    }
-
-    pub fn collapse_to_end(&mut self) {
-        self.start = unsafe { self.haystack.end_to_start_cursor(self.start) };
-    }
-
-    fn collapsed_to_start(mut self) -> Self {
-        unsafe {
-            self.end = self.haystack.start_to_end_cursor(self.start);
-        }
-        self
-    }
-
-    fn collapsed_to_end(mut self) -> Self {
-        unsafe {
-            self.start = self.haystack.end_to_start_cursor(self.end);
-        }
-        self
-    }
-
-    pub fn gap_between(&self, other: &Span<'a, H>) -> Span<'a, H> {
-        debug_assert!(ptr::eq(self.haystack, other.haystack));
-        unsafe {
-            let start = self.haystack.end_to_start_cursor(self.end);
-            let end = other.haystack.start_to_end_cursor(other.start);
-            debug_assert!(start <= other.start);
-            self.with_cursor_range(start..end)
-        }
-    }
-
-    /// If `self` and `other` has the same start cursor, mutate `self` to start
-    /// from `other.end` instead, and return true. Otherwise, do nothing and
-    /// return false.
-    fn trim_start(&mut self, other: &Span<'a, H>) -> bool {
-        debug_assert!(ptr::eq(self.haystack, other.haystack));
-        if self.start != other.start {
-            return false;
-        }
-        self.start = unsafe { other.haystack.end_to_start_cursor(other.end) };
-        true
-    }
-
-    /// If `self` and `other` has the same end cursor, mutate `self` to end with
-    /// `other.start` instead, and return true. Otherwise, do nothing and return
-    /// false.
-    fn trim_end(&mut self, other: &Span<'a, H>) -> bool {
-        debug_assert!(ptr::eq(self.haystack, other.haystack));
-        if self.end != other.end {
-            return false;
-        }
-        self.end = unsafe { other.haystack.start_to_end_cursor(other.start) };
-        true
-    }
-}
-
-impl<'a, H: HaystackMut + ?Sized + 'a> Span<'a, H> {
-    /// # Safety
-    ///
-    /// The original haystack must be already mutable, and the original haystack
-    /// must no longer be accessible after this call.
-    pub unsafe fn into_slice_mut(self) -> &'a mut H {
-        let start = self.start as *mut H::Item;
-        let end = self.end as *mut H::Item;
-        H::from_cursor_range_mut(start..end)
     }
 }

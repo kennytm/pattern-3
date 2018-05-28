@@ -10,8 +10,15 @@
     test,
     align_offset,
     slice_internals,
+    exact_size_is_empty,
+    trusted_len,
+    iterator_find_map,
+    ptr_wrapping_offset_from,
+    generic_associated_types,
 )]
-#![allow(warnings)]
+
+// #![no_std]
+// extern crate core as std;
 
 extern crate memchr;
 
@@ -28,17 +35,21 @@ extern crate memchr;
 // use std::ops::Try;
 // use std::mem;
 
-mod memchr_ptr;
+#[macro_use]
+mod macros;
 
-// pub mod traits;
-// pub mod span;
-// pub mod slices;
-// pub mod strings;
-// pub mod ext;
-// pub mod not;
+pub mod haystack;
+pub mod pattern;
+pub mod cursor;
+pub mod span;
+mod slices;
+mod strings;
+pub mod ext;
 
-// pub use traits::{Pattern, Haystack, HaystackMut, Searcher, Rev};
-// pub use span::Span;
+pub use haystack::{Haystack, HaystackMut};
+pub use pattern::{Pattern, ReversePattern};
+pub use cursor::{RawCursor, Cursor, Origin};
+pub use span::Span;
 
 // mod iterators;
 // mod string;
@@ -48,64 +59,6 @@ mod memchr_ptr;
 //     Searcher, RMatches, MatchIndices, RMatchIndices, MatchRanges, RMatchRanges,
 //     ReplaceWith,
 // };
-
-
-fn bench_data() -> Vec<u8> { std::iter::repeat(b'z').take(10000).collect() }
-
-#[bench]
-fn iterator_memchr(b: &mut test::Bencher) {
-    let haystack = bench_data();
-    let needle = b'a';
-    b.iter(|| {
-        assert!(haystack.iter().position(|&b| b == needle).is_none());
-    });
-    b.bytes = haystack.len() as u64;
-}
-
-#[bench]
-fn optimized_memchr(b: &mut test::Bencher) {
-    let haystack = bench_data();
-    let needle = b'a';
-    b.iter(|| {
-        assert!(memchr::memchr(needle, &haystack).is_none());
-    });
-    b.bytes = haystack.len() as u64;
-}
-
-
-#[bench]
-fn optimized_core_memchr(b: &mut test::Bencher) {
-    let haystack = bench_data();
-    let needle = b'a';
-    b.iter(|| {
-        assert!(core::slice::memchr::memchr(needle, &haystack).is_none());
-    });
-    b.bytes = haystack.len() as u64;
-}
-
-
-#[bench]
-fn optimized_memchr_ptr(b: &mut test::Bencher) {
-    let haystack = bench_data();
-    let needle = b'a';
-    let haystack_end = unsafe { haystack.as_ptr().add(haystack.len()) };
-    b.iter(|| {
-        assert!(memchr_ptr::memchr_ptr(needle, &haystack) == std::ptr::null());
-    });
-    b.bytes = haystack.len() as u64;
-}
-
-#[bench]
-fn optimized_memchr_libc(b: &mut test::Bencher) {
-    let haystack = bench_data();
-    let needle = b'a';
-    b.iter(|| unsafe {
-        assert!(libc::memchr(haystack.as_ptr() as *const libc::c_void, needle as i32, haystack.len()) == std::ptr::null_mut());
-    });
-    b.bytes = haystack.len() as u64;
-}
-
-
 
 
 
