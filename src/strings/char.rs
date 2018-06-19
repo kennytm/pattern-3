@@ -1,156 +1,182 @@
-use traits::{Haystack, Pattern, ReversePattern};
-use span::Span;
+use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
+use haystack::Haystack;
+use super::StrLike;
+use memchr::{memchr, memrchr};
 
-use super::StrCursor;
-
-use memchr;
-use std::iter::{Rev, FusedIterator};
-use std::slice;
-
-unsafe impl<'h> Pattern<'h, str> for char {
-    type Searcher = CharSearcher<'h>;
-
-    #[inline]
-    fn into_searcher(self, haystack: &'h str) -> Self::Searcher {
-        let mut utf8_encoded = [0u8; 4];
-        let utf8_size = self.encode_utf8(&mut utf8_encoded).len();
-        CharSearcher {
-            remaining: haystack.to_span(),
-            needle: self,
-            utf8_size,
-            utf8_encoded,
-        }
-    }
-
-    #[inline]
-    fn is_prefix_of(self, haystack: &'h str) -> bool {
-        (|c: char| c == self).is_prefix_of(haystack)
-    }
-
-    #[inline]
-    fn trim_start(&mut self, span: Span<'h, str>) -> Span<'h, str> {
-        (|c: char| c == *self).trim_start(span)
-    }
-}
-
-unsafe impl<'h> ReversePattern<'h, str> for char {
-    type ReverseSearcher = Rev<Self::Searcher>;
-
-    #[inline]
-    fn into_reverse_searcher(self, haystack: &'h str) -> Self::ReverseSearcher {
-        self.into_searcher(haystack).rev()
-    }
-
-    #[inline]
-    fn is_suffix_of(self, haystack: &'h str) -> bool {
-        (|c: char| c == self).is_suffix_of(haystack)
-    }
-
-    #[inline]
-    fn trim_end(&mut self, span: Span<'h, str>) -> Span<'h, str> {
-        (|c: char| c == *self).trim_end(span)
-    }
-}
-
-
-
-#[derive(Debug)]
-pub struct CharSearcher<'h> {
-    // safety invariant: the boundary of the span must be a valid utf8 character
-    // boundary. This invariant can be broken *within* `next` and `next_back`,
-    // however they must exit with fingers on valid code point boundaries.
-    remaining: Span<'h, str>,
-
-    /// The character being searched for
-    needle: char,
-
+#[derive(Debug, Clone)]
+pub struct CharSearcher {
     // safety invariant: `utf8_size` must be less than 5
     utf8_size: usize,
+
     /// A utf8 encoded copy of the `needle`
     utf8_encoded: [u8; 4],
 }
 
-#[inline]
-unsafe fn memchr_by_ptr<'h>(start: StrCursor<'h>, end: StrCursor<'h>, byte: u8) -> Option<StrCursor<'h>> {
-    let len = end.offset_from(start);
-    let sl = slice::from_raw_parts(start.ptr, len);
-    let index = memchr::memchr(byte, sl)?;
-    Some(start.add(index))
-}
-
-#[inline]
-unsafe fn memrchr_by_ptr<'h>(start: StrCursor<'h>, end: StrCursor<'h>, byte: u8) -> Option<StrCursor<'h>> {
-    let len = end.offset_from(start);
-    let sl = slice::from_raw_parts(start.ptr, len);
-    let index = memchr::memrchr(byte, sl)?;
-    Some(start.add(index))
-}
-
-impl<'h> Iterator for CharSearcher<'h> {
-    type Item = Span<'h, str>;
+impl CharSearcher {
+    #[inline]
+    fn as_bytes(&self) -> &[u8] {
+        unsafe {
+            self.utf8_encoded.get_unchecked(..self.utf8_size)
+        }
+    }
 
     #[inline]
-    fn next(&mut self) -> Option<Span<'h, str>> {
-        let start_limit = self.remaining.start();
-        let end_limit = self.remaining.end();
-        let last_byte = unsafe { *self.utf8_encoded.get_unchecked(self.utf8_size - 1) };
-        let mut cur = start_limit;
-
+    fn last_byte(&self) -> u8 {
         unsafe {
-            while let Some(index) = memchr_by_ptr(cur, end_limit, last_byte) {
-                cur = index.add(1);
-                if cur.offset_from(start_limit) >= self.utf8_size {
-                    let found_char = cur.sub(self.utf8_size);
-                    let slice = slice::from_raw_parts(found_char.ptr, self.utf8_size);
-                    if slice == &self.utf8_encoded[..self.utf8_size] {
-                        let (_, middle, right) = self.remaining.split_twice(found_char, cur);
-                        self.remaining = right;
-                        return Some(middle);
+            *self.utf8_encoded.get_unchecked(self.utf8_size - 1)
+        }
+    }
+
+    fn next<H>(&self, rest: &mut H) -> (H, Option<H>)
+    where
+        H: StrLike + Haystack,
+    {
+        let h = rest.collapse_to_end();
+        unsafe {
+            let index = {
+                let mut finger = 0;
+                let mut bytes = h.as_bytes();
+                loop {
+                    if let Some(index) = memchr(self.last_byte(), bytes.get_unchecked(finger..)) {
+                        finger += index + 1;
+                        if finger >= self.utf8_size {
+                            let found = bytes.get_unchecked((finger - self.utf8_size)..finger);
+                            if found == self.as_bytes() {
+                                break Some(finger);
+                            }
+                        }
+                    } else {
+                        break None;
                     }
                 }
+            };
+            if let Some(index) = index {
+                let (before, found, after) = h.split_around_unchecked((index - self.utf8_size)..index);
+                *rest = after;
+                (before, Some(found))
+            } else {
+                (h, None)
+            }
+        }
+    }
+
+    fn next_back<H>(&self, rest: &mut H) -> (Option<H>, H)
+    where
+        H: StrLike + Haystack,
+    {
+        let h = rest.collapse_to_start();
+        unsafe {
+            let index = {
+                let mut bytes = h.as_bytes();
+                loop {
+                    if let Some(index) = memrchr(self.last_byte(), bytes) {
+                        let index = index + 1;
+                        if index >= self.utf8_size {
+                            let found = bytes.get_unchecked((index - self.utf8_size)..index);
+                            if found == self.as_bytes() {
+                                break Some(index);
+                            }
+                        }
+                        bytes = bytes.get_unchecked(..(index - 1));
+                    } else {
+                        break None;
+                    }
+                }
+            };
+            if let Some(index) = index {
+                let (before, found, after) = h.split_around_unchecked((index - self.utf8_size)..index);
+                *rest = before;
+                (Some(found), after)
+            } else {
+                (None, h)
+            }
+        }
+    }
+
+    #[inline]
+    fn is_suffix_of(self, haystack: &str) -> bool {
+        let bytes = haystack.as_bytes();
+        if self.utf8_size <= bytes.len() {
+            let suffix = unsafe { bytes.get_unchecked((bytes.len() - self.utf8_size)..) };
+            suffix == self.as_bytes()
+        } else {
+            false
+        }
+    }
+}
+
+#[inline]
+fn is_prefix_of(c: char, haystack: &str) -> bool {
+    let mut utf8_encoded = [0u8; 4];
+    let encoded = c.encode_utf8(&mut utf8_encoded);
+    haystack.as_bytes().get(..encoded.len()) == Some(encoded.as_bytes())
+}
+
+#[inline]
+fn is_suffix_of(c: char, haystack: &str) -> bool {
+    let mut utf8_encoded = [0u8; 4];
+    let encoded = c.encode_utf8(&mut utf8_encoded);
+    if encoded.len() > haystack.len() {
+        return false;
+    }
+    let suffix = unsafe { haystack.get_unchecked((haystack.len() - encoded.len())..) };
+    suffix == encoded
+}
+
+
+macro_rules! impl_pattern_for_str_like {
+    ([$($gen:tt)*] $ty:ty) => {
+        impl $($gen)* Pattern<$ty> for char {
+            type Searcher = CharSearcher;
+
+            #[inline]
+            fn into_searcher(self) -> Self::Searcher {
+                let mut utf8_encoded = [0u8; 4];
+                let utf8_size = self.encode_utf8(&mut utf8_encoded).len();
+                CharSearcher {
+                    utf8_size,
+                    utf8_encoded,
+                }
+            }
+
+            #[inline]
+            fn is_prefix_of(self, haystack: $ty) -> bool {
+                is_prefix_of(self, &*haystack)
+            }
+
+            #[inline]
+            fn trim_start(&mut self, haystack: &mut $ty) {
+                (|c: char| c == *self).trim_start(haystack)
+            }
+
+            #[inline]
+            fn is_suffix_of(self, haystack: $ty) -> bool {
+                is_suffix_of(self, &*haystack)
+            }
+
+            #[inline]
+            fn trim_end(&mut self, haystack: &mut $ty) {
+                (|c: char| c == *self).trim_end(haystack)
             }
         }
 
-        self.remaining.collapse_to_end();
-        None
-    }
-
-    #[inline]
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        let start = self.remaining.start();
-        let end = self.remaining.end();
-        let len = end.offset_from(start);
-        (0, Some(len / self.utf8_size))
-    }
-}
-
-impl<'h> FusedIterator for CharSearcher<'h> {}
-
-impl<'h> DoubleEndedIterator for CharSearcher<'h> {
-    #[inline]
-    fn next_back(&mut self) -> Option<Span<'h, str>> {
-        let start_limit = self.remaining.start();
-        let end_limit = self.remaining.end();
-        let last_byte = unsafe { *self.utf8_encoded.get_unchecked(self.utf8_size - 1) };
-        let mut cur = end_limit;
-
-        unsafe {
-            while let Some(index) = memrchr_by_ptr(start_limit, cur, last_byte) {
-                let next = index.add(1);
-                if next.offset_from(start_limit) >= self.utf8_size {
-                    let found_char = next.sub(self.utf8_size);
-                    let slice = slice::from_raw_parts(found_char.ptr, self.utf8_size);
-                    if slice == &self.utf8_encoded[..self.utf8_size] {
-                        let (left, middle, _) = self.remaining.split_twice(found_char, next);
-                        self.remaining = left;
-                        return Some(middle);
-                    }
-                }
-                cur = index;
+        unsafe impl $($gen)* Searcher<$ty> for CharSearcher {
+            #[inline]
+            fn search(&mut self, haystack: &mut $ty) -> ($ty, Option<$ty>) {
+                self.next(haystack)
             }
         }
 
-        self.remaining.collapse_to_start();
-        None
+        unsafe impl $($gen)* ReverseSearcher<$ty> for CharSearcher {
+            #[inline]
+            fn rsearch(&mut self, haystack: &mut $ty) -> (Option<$ty>, $ty) {
+                self.next_back(haystack)
+            }
+        }
+
+        unsafe impl $($gen)* DoubleEndedSearcher<$ty> for CharSearcher {}
     }
 }
+
+impl_pattern_for_str_like!([<'h>] &'h str);
+impl_pattern_for_str_like!([<'h>] &'h mut str);

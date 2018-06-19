@@ -1,133 +1,10 @@
-use pattern::{Pattern, ReversePattern};
-use cursor::Cursor;
-use span::Span;
+use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
+use haystack::Haystack;
+use super::StrLike;
 
-use std::iter::{Rev, FusedIterator};
-
-unsafe impl<'h, F> Pattern<'h, str> for F
-where
-    F: FnMut(char) -> bool,
-{
-    type Searcher = MultiCharSearcher<'h, F>;
-
-    #[inline]
-    fn into_searcher(self, span: Span<'h, str>) -> Self::Searcher {
-        MultiCharSearcher {
-            predicate: self,
-            remaining: span,
-        }
-    }
-
-    #[inline]
-    fn is_prefix_of(mut self, span: Span<'_, str>) -> bool {
-        if let Some(ch) = span.as_str().chars().next() {
-            self(ch)
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    fn trim_start(&mut self, span: &mut Span<'_, str>) {
-        let mut chars = span.as_str().chars();
-        let unconsume_amount = chars
-            .find_map(|c| if !self(c) { Some(c.len_utf8()) } else { None })
-            .unwrap_or(0);
-        let start = unsafe { Cursor::new_unchecked(chars.as_str().as_ptr().sub(unconsume_amount)) };
-        span.remove_start(start);
-    }
-
+pub struct MultiCharSearcher<F> {
+    predicate: F,
 }
-
-unsafe impl<'h, F> ReversePattern<'h, str> for F
-where
-    F: FnMut(char) -> bool,
-{
-    type ReverseSearcher = Rev<Self::Searcher>;
-
-    #[inline]
-    fn into_reverse_searcher(self, span: Span<'h, str>) -> Self::ReverseSearcher {
-        self.into_searcher(span).rev()
-    }
-
-    #[inline]
-    fn is_suffix_of(mut self, span: Span<'_, str>) -> bool {
-        if let Some(ch) = span.as_str().chars().next_back() {
-            self(ch)
-        } else {
-            false
-        }
-    }
-
-    // #[inline]
-    // fn trim_end(&mut self, span: &mut Span<'h, str>) {
-    //     let cloned = unsafe { span.clone() };
-    //     if let Some(last_unmatch) = (|c| !self(c)).into_searcher(cloned).next_back() {
-    //         span.remove_end(last_unmatch.end());
-    //     } else {
-    //         span.collapse_to_start();
-    //     }
-    // }
-
-
-    #[inline]
-    fn trim_end(&mut self, span: &mut Span<'_, str>) {
-        // `find.map_or` is faster in trim_end, while
-        // `find.unwrap_or` is faster in trim_start. Don't ask me why.
-        let mut chars = span.as_str().chars();
-        let unconsume_amount = chars
-            .by_ref()
-            .rev()
-            .find(|c| !self(*c))
-            .map_or(0, |c| c.len_utf8());
-        let string = chars.as_str();
-        let len = string.len() + unconsume_amount;
-        let end = unsafe { Cursor::new_unchecked(string.as_ptr().add(len)) };
-        span.remove_end(end);
-    }
-}
-
-unsafe impl<'h, 'p> Pattern<'h, str> for &'p [char] {
-    type Searcher = <MultiCharEq<'p> as Pattern<'h, str>>::Searcher;
-
-    #[inline]
-    fn into_searcher(self, span: Span<'h, str>) -> Self::Searcher {
-        MultiCharEq(self).into_searcher(span)
-    }
-
-    #[inline]
-    fn is_prefix_of(self, span: Span<'_, str>) -> bool {
-        MultiCharEq(self).is_prefix_of(span)
-    }
-
-    #[inline]
-    fn trim_start(&mut self, span: &mut Span<'_, str>) {
-        MultiCharEq(*self).trim_start(span)
-    }
-}
-
-unsafe impl<'h, 'p> ReversePattern<'h, str> for &'p [char] {
-    type ReverseSearcher = Rev<Self::Searcher>;
-
-    #[inline]
-    fn into_reverse_searcher(self, span: Span<'h, str>) -> Self::ReverseSearcher {
-        self.into_searcher(span).rev()
-    }
-
-    #[inline]
-    fn is_suffix_of(self, span: Span<'_, str>) -> bool {
-        MultiCharEq(self).is_suffix_of(span)
-    }
-
-    #[inline]
-    fn trim_end(&mut self, span: &mut Span<'_, str>) {
-        MultiCharEq(self).trim_end(span)
-    }
-}
-
-
-
-
 
 pub struct MultiCharEq<'p>(&'p [char]);
 
@@ -138,59 +15,215 @@ impl_unboxed_functions! {
     }
 }
 
-pub struct MultiCharSearcher<'h, F>
+#[inline]
+fn search<H, F>(predicate: &mut F, rest: &mut H) -> (H, Option<H>)
 where
     F: FnMut(char) -> bool,
+    H: StrLike + Haystack,
 {
-    predicate: F,
-    remaining: Span<'h, str>,
-}
+    let h = rest.collapse_to_end();
 
-impl<'h, F> Iterator for MultiCharSearcher<'h, F>
-where
-    F: FnMut(char) -> bool,
-{
-    type Item = Span<'h, str>;
+    let range = do catch {
+        let mut chars = h.chars();
+        let c = chars.find(|c| predicate(*c))?;
+        let end = chars.as_str().as_ptr();
+        let start = unsafe { end.sub(c.len_utf8()) };
+        start..end
+    };
 
-    #[inline]
-    fn next(&mut self) -> Option<Span<'h, str>> {
-        let mut chars = self.remaining.as_str().chars();
-        if let Some(found) = chars.find(|c| (self.predicate)(*c)) {
-            let end = chars.as_str().as_ptr();
-            unsafe {
-                let start = end.sub(found.len_utf8());
-                Some(self.remaining.take_from_start_unchecked(start, end))
-            }
-        } else {
-            self.remaining.collapse_to_end();
-            None
-        }
+    if let Some(range) = range {
+        let (before, found, after) = unsafe { h.split_around_ptr_unchecked(range) };
+        *rest = after;
+        (before, Some(found))
+    } else {
+        (h, None)
     }
 }
 
-impl<'h, F> FusedIterator for MultiCharSearcher<'h, F>
+#[inline]
+fn rsearch<H, F>(predicate: &mut F, rest: &mut H) -> (Option<H>, H)
 where
     F: FnMut(char) -> bool,
-{}
+    H: StrLike + Haystack,
+{
+    let h = rest.collapse_to_start();
 
-impl<'h, F> DoubleEndedIterator for MultiCharSearcher<'h, F>
+    let range = do catch {
+        let mut chars = h.chars();
+        let c = chars.rfind(|c| predicate(*c))?;
+        let string = chars.as_str();
+        unsafe {
+            let start = string.as_ptr().add(string.len());
+            let end = start.add(c.len_utf8());
+            start..end
+        }
+    };
+
+    if let Some(range) = range {
+        let (before, found, after) = unsafe { h.split_around_ptr_unchecked(range) };
+        *rest = before;
+        (Some(found), after)
+    } else {
+        (None, h)
+    }
+}
+
+#[inline]
+fn is_prefix_of<F>(mut predicate: F, rest: &str) -> bool
 where
     F: FnMut(char) -> bool,
 {
-    #[inline]
-    fn next_back(&mut self) -> Option<Span<'h, str>> {
-        let mut chars = self.remaining.as_str().chars();
-        if let Some(found) = chars.rfind(|c| (self.predicate)(*c)) {
-            let string = chars.as_str();
-            let len = string.len();
-            unsafe {
-                let start = string.as_ptr().add(len);
-                let end = start.add(found.len_utf8());
-                Some(self.remaining.take_from_end_unchecked(start, end))
-            }
-        } else {
-            self.remaining.collapse_to_start();
-            None
-        }
+    if let Some(c) = rest.chars().next() {
+        predicate(c)
+    } else {
+        false
     }
 }
+
+#[inline]
+fn is_suffix_of<F>(mut predicate: F, rest: &str) -> bool
+where
+    F: FnMut(char) -> bool,
+{
+    if let Some(c) = rest.chars().next_back() {
+        predicate(c)
+    } else {
+        false
+    }
+}
+
+#[inline]
+fn trim_start<H, F>(predicate: &mut F, rest: &mut H)
+where
+    F: FnMut(char) -> bool,
+    H: StrLike + Haystack,
+{
+    let h = rest.collapse_to_start();
+    let ptr = {
+        let mut chars = h.chars();
+        let unconsume_amount = chars
+            .find_map(|c| if !predicate(c) { Some(c.len_utf8()) } else { None })
+            .unwrap_or(0);
+        // eprintln!("{:?} / {:?} / {:?}", &*h, chars.as_str(), unconsume_amount);
+        unsafe { chars.as_str().as_ptr().sub(unconsume_amount) }
+    };
+    *rest = unsafe { h.slice_from_ptr_unchecked(ptr) };
+}
+
+#[inline]
+fn trim_end<H, F>(predicate: &mut F, rest: &mut H)
+where
+    F: FnMut(char) -> bool,
+    H: StrLike + Haystack,
+{
+    // `find.map_or` is faster in trim_end in the microbenchmark, while
+    // `find.unwrap_or` is faster in trim_start. Don't ask me why.
+    let h = rest.collapse_to_start();
+    let index = {
+        let mut chars = h.chars();
+        let unconsume_amount = chars
+            .by_ref()
+            .rev() // btw, `rev().find()` is faster than `rfind()`
+            .find(|c| !predicate(*c))
+            .map_or(0, |c| c.len_utf8());
+        chars.as_str().len() + unconsume_amount
+    };
+    *rest = unsafe { h.slice_to_unchecked(index) };
+}
+
+macro_rules! impl_pattern_for_str_like {
+    ([$($gen_f:tt)*] [$($gen_p:tt)*] $ty:ty) => {
+        impl $($gen_f)* Pattern<$ty> for F
+        where
+            F: FnMut(char) -> bool,
+        {
+            type Searcher = MultiCharSearcher<F>;
+
+            #[inline]
+            fn into_searcher(self) -> Self::Searcher {
+                MultiCharSearcher {
+                    predicate: self,
+                }
+            }
+
+            #[inline]
+            fn is_prefix_of(self, haystack: $ty) -> bool {
+                is_prefix_of(self, &*haystack)
+            }
+
+            #[inline]
+            fn trim_start(&mut self, haystack: &mut $ty) {
+                trim_start(self, haystack)
+            }
+
+            #[inline]
+            fn is_suffix_of(self, haystack: $ty) -> bool {
+                is_suffix_of(self, &*haystack)
+            }
+
+            #[inline]
+            fn trim_end(&mut self, haystack: &mut $ty) {
+                trim_end(self, haystack)
+            }
+        }
+
+        impl $($gen_p)* Pattern<$ty> for &'p [char] {
+            type Searcher = MultiCharSearcher<MultiCharEq<'p>>;
+
+            #[inline]
+            fn into_searcher(self) -> Self::Searcher {
+                MultiCharSearcher {
+                    predicate: MultiCharEq(self),
+                }
+            }
+
+            #[inline]
+            fn is_prefix_of(self, haystack: $ty) -> bool {
+                is_prefix_of(MultiCharEq(self), &*haystack)
+            }
+
+            #[inline]
+            fn trim_start(&mut self, haystack: &mut $ty) {
+                trim_start(&mut MultiCharEq(*self), haystack)
+            }
+
+            #[inline]
+            fn is_suffix_of(self, haystack: $ty) -> bool {
+                is_suffix_of(MultiCharEq(self), &*haystack)
+            }
+
+            #[inline]
+            fn trim_end(&mut self, haystack: &mut $ty) {
+                trim_end(&mut MultiCharEq(*self), haystack)
+            }
+        }
+
+        unsafe impl $($gen_f)* Searcher<$ty> for MultiCharSearcher<F>
+        where
+            F: FnMut(char) -> bool,
+        {
+            #[inline]
+            fn search(&mut self, haystack: &mut $ty) -> ($ty, Option<$ty>) {
+                search(&mut self.predicate, haystack)
+            }
+        }
+
+        unsafe impl $($gen_f)* ReverseSearcher<$ty> for MultiCharSearcher<F>
+        where
+            F: FnMut(char) -> bool,
+        {
+            #[inline]
+            fn rsearch(&mut self, haystack: &mut $ty) -> (Option<$ty>, $ty) {
+                rsearch(&mut self.predicate, haystack)
+            }
+        }
+
+        unsafe impl $($gen_f)* DoubleEndedSearcher<$ty> for MultiCharSearcher<F>
+        where
+            F: FnMut(char) -> bool,
+        {}
+    }
+}
+
+impl_pattern_for_str_like!([<'h, F>] [<'h, 'p>] &'h str);
+impl_pattern_for_str_like!([<'h, F>] [<'h, 'p>] &'h mut str);

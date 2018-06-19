@@ -1,6 +1,7 @@
 //! [Haystack] traits.
 
-use cursor::RawCursor;
+use std::ops::Range;
+use std::fmt::Debug;
 
 /// Haystacks are searchable linear data structures like strings and slices.
 ///
@@ -24,39 +25,28 @@ use cursor::RawCursor;
 ///                 | o | _ | w | o |    &string[4..8]
 ///                 +---+---+---+---+
 /// ```
-pub trait Haystack {
-    /// The type of a non-validated cursor used to address units in the
-    /// haystack.
-    ///
-    /// See the documentation of the [`RawCursor`] trait for details.
-    type Cursor: RawCursor<Self>;
+pub trait Haystack: Sized {
+    fn is_empty(&self) -> bool;
 
-    /// Auxiliary data which helps converting a cursor to an index, and a span
-    /// to a real haystack.
-    ///
-    /// This is usually a pointer, which points to the start of the haystack.
-    type Origin: Copy;
+    fn collapse_to_end(&mut self) -> Self;
 
-    /// Obtains the origin of this haystack.
-    fn as_origin_raw(&self) -> Self::Origin;
+    fn collapse_to_start(&mut self) -> Self;
 
-    /// Obtains the start and end cursors of this haystack.
-    fn as_span_raw(&self) -> (Self::Cursor, Self::Cursor);
+    // fn empty_at_start(&self) -> Self;
 
-    /// Recovers a haystack from a span.
-    unsafe fn from_span_raw<'h>(
-        origin: Self::Origin,
-        start: Self::Cursor,
-        end: Self::Cursor,
-    ) -> &'h Self;
+    // fn empty_at_end(&self) -> Self;
+
+    // fn consume_first(&mut self) -> Option<Self>;
+
+    // fn consume_last(&mut self) -> Option<Self>;
 }
 
-/// Haystacks where the content can be mutable.
-pub trait HaystackMut: Haystack {
-    /// Recovers a mutable haystack from a span.
-    unsafe fn from_span_raw_mut<'h>(
-        origin: Self::Origin,
-        start: Self::Cursor,
-        end: Self::Cursor,
-    ) -> &'h mut Self;
+pub trait IndexHaystack: Haystack {
+    type Index;
+    type Origin: Copy + Debug;
+
+    /// Obtains the origin of this haystack.
+    fn origin(&self) -> Self::Origin;
+
+    unsafe fn range_from_origin(&self, origin: Self::Origin) -> Range<Self::Index>;
 }

@@ -1,8 +1,9 @@
 //! Pattern traits.
 
-use span::Span;
-use std::iter::FusedIterator;
 use haystack::Haystack;
+
+use std::fmt;
+use std::mem::replace;
 
 // Axioms:
 //
@@ -14,44 +15,218 @@ use haystack::Haystack;
 // 6. `cursor_range().0 == start_to_end_cursor(cursor_range().0)`
 // 7. `cursor_range().1 == end_to_start_cursor(cursor_range().1)`
 
-
-
-/// A pattern
-// FIXME: The trait should be `Pattern<H>` with `Searcher` being a GAT.
-pub unsafe trait Pattern<'h, H>: Sized
-where
-    H: Haystack + ?Sized,
-{
-    type Searcher: FusedIterator<Item = Span<'h, H>>;
-
-    fn into_searcher(self, span: Span<'h, H>) -> Self::Searcher;
-
-    fn is_prefix_of(self, span: Span<'_, H>) -> bool;
-
-    fn trim_start(&mut self, span: &mut Span<'_, H>);
+pub unsafe trait Searcher<H>: Sized {
+    fn search(&mut self, haystack: &mut H) -> (H, Option<H>);
 }
 
-/// A pattern which can be searched from backward.
-///
-/// # Double-ended pattern
-///
-/// A pattern is "double-ended" when its searcher implements
-/// [`DoubleEndedIterator`]. We consider a pattern `P` is double-ended when the
-/// following conditions are met:
-///
-/// 1. `P::Searcher` implements `DoubleEndedIterator`
-/// 2. `P::ReverseSearcher` is exactly `Rev<P::Searcher>`
-/// 3. `P::into_reverse_searcher` is implemented exactly as
-///     `self.into_searcher(span).rev()`.
-pub unsafe trait ReversePattern<'h, H>: Pattern<'h, H>
+pub unsafe trait ReverseSearcher<H>: Searcher<H> {
+    fn rsearch(&mut self, haystack: &mut H) -> (Option<H>, H);
+}
+
+pub unsafe trait DoubleEndedSearcher<H>: ReverseSearcher<H> {}
+
+
+pub(crate) enum EitherSearcher<T, U> {
+    Left(T),
+    Right(U),
+}
+
+unsafe impl<H, T, U> Searcher<H> for EitherSearcher<T, U>
 where
-    H: Haystack + ?Sized,
+    T: Searcher<H>,
+    U: Searcher<H>,
 {
-    type ReverseSearcher: FusedIterator<Item = Span<'h, H>>;
+    fn search(&mut self, haystack: &mut H) -> (H, Option<H>) {
+        match self {
+            EitherSearcher::Left(left) => left.search(haystack),
+            EitherSearcher::Right(right) => right.search(haystack),
+        }
+    }
+}
 
-    fn into_reverse_searcher(self, span: Span<'h, H>) -> Self::ReverseSearcher;
+unsafe impl<H, T, U> ReverseSearcher<H> for EitherSearcher<T, U>
+where
+    T: ReverseSearcher<H>,
+    U: ReverseSearcher<H>,
+{
+    fn rsearch(&mut self, haystack: &mut H) -> (Option<H>, H) {
+        match self {
+            EitherSearcher::Left(left) => left.rsearch(haystack),
+            EitherSearcher::Right(right) => right.rsearch(haystack),
+        }
+    }
+}
 
-    fn is_suffix_of(self, span: Span<'_, H>) -> bool;
 
-    fn trim_end(&mut self, span: &mut Span<'_, H>);
+// pub struct SearchDriver<H, P>
+// where
+//     H: Haystack,
+//     P: Pattern<H>,
+// {
+//     searcher: P::Searcher,
+//     rest: H,
+//     is_begin: bool,
+//     is_end: bool,
+// }
+
+// impl<H, P> Clone for SearchDriver<H, P>
+// where
+//     H: Haystack + Clone,
+//     P: Pattern<H>,
+//     P::Searcher: Clone,
+// {
+//     fn clone(&self) -> Self {
+//         SearchDriver {
+//             searcher: self.searcher.clone(),
+//             rest: self.rest.clone(),
+//             is_begin: self.is_begin,
+//             is_end: self.is_end,
+//         }
+//     }
+
+//     fn clone_from(&mut self, other: &Self) {
+//         self.searcher.clone_from(&other.searcher);
+//         self.rest.clone_from(&other.rest);
+//         self.is_begin = other.is_begin;
+//         self.is_end = other.is_end;
+//     }
+// }
+
+// impl<H, P> fmt::Debug for SearchDriver<H, P>
+// where
+//     H: Haystack + fmt::Debug,
+//     P: Pattern<H>,
+//     P::Searcher: fmt::Debug,
+// {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         f.debug_struct("SearchDriver")
+//             .field("searcher", &self.searcher)
+//             .field("rest", &self.rest)
+//             .field("is_begin", &self.is_begin)
+//             .field("is_end", &self.is_end)
+//             .finish()
+//     }
+// }
+
+/*
+pub struct SearchDriver<H, P>
+where
+    H: Haystack,
+    P: Pattern<H>,
+{
+    remaining: Option<H>,
+    searcher: P::Searcher,
+}
+
+impl_clone_and_debug_for_wrapper! {
+    [<H, P>] where [H: Haystack, P: Pattern<H>]
+    SearchDriver<H, P> => (H, P::Searcher);
+    fields(remaining, searcher)
+}
+
+impl<H, P> SearchDriver<H, P>
+where
+    H: Haystack,
+    P: Pattern<H>,
+{
+    #[inline]
+    pub fn new(pattern: P, haystack: H) -> Self {
+        Self {
+            remaining: Some(haystack),
+            searcher: pattern.into_searcher(),
+        }
+    }
+
+    #[inline]
+    pub fn search(&mut self) -> Option<(H, Option<H>)> {
+        let remaining = self.remaining.take()?;
+        match self.searcher.search(remaining) {
+            SearchOutput::Match { before, found, after } => {
+                self.remaining = Some(after);
+                Some((before, Some(found)))
+            }
+            SearchOutput::Reject { remaining } => {
+                Some((remaining, None))
+            }
+        }
+    }
+
+    #[inline]
+    pub fn try_fold<B, F, R>(&mut self, init: B, f: F) -> R
+    where
+        F: FnMut(B, H, Option<H>) -> R,
+        R: Try<Ok = B>,
+    {
+        if let Some(remaining) = self.remaining.take() {
+            let (result, remaining) = self.searcher.try_fold(remaining, init, f);
+            self.remaining = remaining;
+            result
+        } else {
+            R::from_ok(init)
+        }
+    }
+
+    #[inline]
+    pub fn remaining(&mut self) -> Option<H> {
+        self.remaining.take()
+    }
+}
+
+impl<H, P> SearchDriver<H, P>
+where
+    H: Haystack,
+    P: Pattern<H>,
+    P::Searcher: ReverseSearcher<H>,
+{
+    #[inline]
+    pub fn rsearch(&mut self) -> Option<(Option<H>, H)> {
+        let remaining = self.remaining.take()?;
+        match self.searcher.rsearch(remaining) {
+            SearchOutput::Match { before, found, after } => {
+                self.remaining = Some(before);
+                Some((Some(found), after))
+            }
+            SearchOutput::Reject { remaining } => {
+                Some((None, remaining))
+            }
+        }
+    }
+
+    #[inline]
+    pub fn try_rfold<B, F, R>(&mut self, init: B, f: F) -> R
+    where
+        F: FnMut(B, Option<H>, H) -> R,
+        R: Try<Ok = B>,
+    {
+        if let Some(remaining) = self.remaining.take() {
+            let (result, remaining) = self.searcher.try_rfold(remaining, init, f);
+            self.remaining = remaining;
+            result
+        } else {
+            R::from_ok(init)
+        }
+    }
+}
+*/
+
+/// A pattern
+pub trait Pattern<H>: Sized
+where
+    H: Haystack,
+{
+    type Searcher: Searcher<H>;
+
+    fn into_searcher(self) -> Self::Searcher;
+
+    fn is_prefix_of(self, haystack: H) -> bool;
+
+    fn trim_start(&mut self, haystack: &mut H);
+
+    fn is_suffix_of(self, haystack: H) -> bool
+    where
+        Self::Searcher: ReverseSearcher<H>;
+
+    fn trim_end(&mut self, haystack: &mut H)
+    where
+        Self::Searcher: ReverseSearcher<H>;
 }

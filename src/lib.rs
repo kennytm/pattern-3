@@ -15,41 +15,27 @@
     iterator_find_map,
     ptr_wrapping_offset_from,
     generic_associated_types,
+    slice_get_slice,
+    core_intrinsics,
+    catch_expr,
 )]
-
-// #![no_std]
-// extern crate core as std;
+#![cfg_attr(test, allow(warnings))]
 
 extern crate memchr;
-
-// extern crate memchr;
-
-// use std::ops::Range;
-// use std::borrow::Borrow;
-// use std::marker::PhantomData;
-// use std::cmp::Ordering;
-// use std::ptr;
-// use std::slice;
-// use std::str;
-// use std::iter::DoubleEndedIterator;
-// use std::ops::Try;
-// use std::mem;
 
 #[macro_use]
 mod macros;
 
 pub mod haystack;
 pub mod pattern;
-pub mod cursor;
-pub mod span;
 mod slices;
 mod strings;
 pub mod ext;
 
-pub use haystack::{Haystack, HaystackMut};
-pub use pattern::{Pattern, ReversePattern};
-pub use cursor::{RawCursor, Cursor, Origin};
-pub use span::Span;
+pub use haystack::{Haystack, IndexHaystack};
+pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
+// pub use cursor::{Origin};
+// pub use span::Span;
 
 // mod iterators;
 // mod string;
