@@ -29,11 +29,11 @@ mod macros;
 pub mod haystack;
 pub mod pattern;
 mod slices;
-mod strings;
+// mod strings;
 pub mod ext;
 
-pub use haystack::{Haystack, IndexHaystack};
-pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
+// pub use haystack::{Haystack, IndexHaystack};
+// pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
 // pub use cursor::{Origin};
 // pub use span::Span;
 

@@ -1,6 +1,6 @@
 //! Pattern traits.
 
-use haystack::Haystack;
+use haystack::Hay;
 
 use std::fmt;
 use std::mem::replace;
@@ -15,15 +15,23 @@ use std::mem::replace;
 // 6. `cursor_range().0 == start_to_end_cursor(cursor_range().0)`
 // 7. `cursor_range().1 == end_to_start_cursor(cursor_range().1)`
 
-pub unsafe trait Searcher<H>: Sized {
-    fn search(&mut self, haystack: &mut H) -> (H, Option<H>);
+pub unsafe trait Searcher: Sized {
+    type Hay: Hay + ?Sized;
+
+    fn search(&mut self, hay: &Self::Hay) -> Option<(
+        <Self::Hay as Hay>::StartCursor,
+        <Self::Hay as Hay>::EndCursor,
+    )>;
 }
 
-pub unsafe trait ReverseSearcher<H>: Searcher<H> {
-    fn rsearch(&mut self, haystack: &mut H) -> (Option<H>, H);
+pub unsafe trait ReverseSearcher: Searcher {
+    fn rsearch(&mut self, hay: &Self::Hay) -> Option<(
+        <Self::Hay as Hay>::StartCursor,
+        <Self::Hay as Hay>::EndCursor,
+    )>;
 }
 
-pub unsafe trait DoubleEndedSearcher<H>: ReverseSearcher<H> {}
+pub unsafe trait DoubleEndedSearcher: ReverseSearcher {}
 
 
 pub(crate) enum EitherSearcher<T, U> {
@@ -31,31 +39,40 @@ pub(crate) enum EitherSearcher<T, U> {
     Right(U),
 }
 
-unsafe impl<H, T, U> Searcher<H> for EitherSearcher<T, U>
+unsafe impl<T, U> Searcher for EitherSearcher<T, U>
 where
-    T: Searcher<H>,
-    U: Searcher<H>,
+    T: Searcher,
+    U: Searcher<Hay = T::Hay>,
 {
-    fn search(&mut self, haystack: &mut H) -> (H, Option<H>) {
+    type Hay = T::Hay;
+
+    fn search(&mut self, hay: &T::Hay) -> Option<(
+        <T::Hay as Hay>::StartCursor,
+        <T::Hay as Hay>::EndCursor,
+    )> {
         match self {
-            EitherSearcher::Left(left) => left.search(haystack),
-            EitherSearcher::Right(right) => right.search(haystack),
+            EitherSearcher::Left(left) => left.search(hay),
+            EitherSearcher::Right(right) => right.search(hay),
         }
     }
 }
 
-unsafe impl<H, T, U> ReverseSearcher<H> for EitherSearcher<T, U>
+unsafe impl<T, U> ReverseSearcher for EitherSearcher<T, U>
 where
-    T: ReverseSearcher<H>,
-    U: ReverseSearcher<H>,
+    T: ReverseSearcher,
+    U: ReverseSearcher<Hay = T::Hay>,
 {
-    fn rsearch(&mut self, haystack: &mut H) -> (Option<H>, H) {
+    fn rsearch(&mut self, hay: &T::Hay) -> Option<(
+        <T::Hay as Hay>::StartCursor,
+        <T::Hay as Hay>::EndCursor,
+    )> {
         match self {
-            EitherSearcher::Left(left) => left.rsearch(haystack),
-            EitherSearcher::Right(right) => right.rsearch(haystack),
+            EitherSearcher::Left(left) => left.rsearch(hay),
+            EitherSearcher::Right(right) => right.rsearch(hay),
         }
     }
 }
+
 
 
 // pub struct SearchDriver<H, P>
@@ -212,21 +229,21 @@ where
 /// A pattern
 pub trait Pattern<H>: Sized
 where
-    H: Haystack,
+    H: Hay + ?Sized,
 {
-    type Searcher: Searcher<H>;
+    type Searcher: Searcher<Hay = H>;
 
     fn into_searcher(self) -> Self::Searcher;
 
-    fn is_prefix_of(self, haystack: H) -> bool;
+    fn is_prefix_of(self, hay: &H) -> bool;
 
-    fn trim_start(&mut self, haystack: &mut H);
+    fn trim_start(&mut self, hay: &H) -> H::StartCursor;
 
-    fn is_suffix_of(self, haystack: H) -> bool
+    fn is_suffix_of(self, hay: &H) -> bool
     where
-        Self::Searcher: ReverseSearcher<H>;
+        Self::Searcher: ReverseSearcher;
 
-    fn trim_end(&mut self, haystack: &mut H)
+    fn trim_end(&mut self, haystack: &H) -> H::EndCursor
     where
-        Self::Searcher: ReverseSearcher<H>;
+        Self::Searcher: ReverseSearcher;
 }
