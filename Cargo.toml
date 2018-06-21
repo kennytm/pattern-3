@@ -15,3 +15,4 @@ panic = "abort"
 
 [profile.bench]
 opt-level = 2 # to be fair to libstd which is compiled with -O2 too.
+# debug = 2 # for running instruments

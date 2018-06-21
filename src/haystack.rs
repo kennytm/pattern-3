@@ -5,8 +5,9 @@ use std::fmt::Debug;
 use std::borrow::Borrow;
 
 pub trait Hay {
-    type StartCursor;
-    type EndCursor;
+    type Index;
+
+    fn is_empty(&self) -> bool;
 }
 
 pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Default {
@@ -14,22 +15,20 @@ pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Default {
 
     unsafe fn split_around_unchecked(
         self,
-        start: <Self::Hay as Hay>::StartCursor,
-        end: <Self::Hay as Hay>::EndCursor,
+        range: Range<<Self::Hay as Hay>::Index>,
     ) -> (Self, Self, Self);
 
-    unsafe fn trim_start_unchecked(self, start: <Self::Hay as Hay>::StartCursor) -> Self;
-    unsafe fn trim_end_unchecked(self, end: <Self::Hay as Hay>::EndCursor) -> Self;
+    unsafe fn trim_start_unchecked(self, start: <Self::Hay as Hay>::Index) -> Self;
+    unsafe fn trim_end_unchecked(self, end: <Self::Hay as Hay>::Index) -> Self;
 }
 
 pub trait IndexHaystack: Haystack {
-    type Index;
     type Origin: Copy + Debug;
 
     /// Obtains the origin of this haystack.
     fn origin(&self) -> Self::Origin;
 
-    unsafe fn range_from_origin(&self, origin: Self::Origin) -> Range<Self::Index>;
+    unsafe fn range_from_origin(&self, origin: Self::Origin) -> Range<<Self::Hay as Hay>::Index>;
 }
 
 // /// Haystacks are searchable linear data structures like strings and slices.

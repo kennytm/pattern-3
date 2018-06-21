@@ -7,7 +7,7 @@ use pattern_3::*;
 
 macro_rules! search_asserts {
     ($haystack:expr, $pattern:expr, $testname:expr, [$($op:ident = $expected:expr,)*]) => {
-        let mut searcher = ext::match_ranges($haystack, $pattern).map(|(r, _)| r)
+        let mut searcher = ext::match_ranges($haystack, $pattern).map(|(r, _)| r);
         let actual = [$(searcher.$op()),*];
         assert_eq!(&actual[..], &[$($expected),*][..], $testname);
     };
@@ -258,6 +258,51 @@ fn test_fn_double_ended() {
         next_back = Some(43..47),
         next = Some(15..19),
         next_back = None,
+        next = None,
+    ]);
+}
+
+#[test]
+fn test_str() {
+    search_asserts!("abbcbbd", "bb", "str_searcher_ascii_haystack::fwd", [
+        next = Some(1..3),
+        next = Some(4..6),
+        next = None,
+    ]);
+
+    search_asserts!("abbcbbbbd", "bb", "str_searcher_ascii_haystack_seq::fwd", [
+        next = Some(1..3),
+        next = Some(4..6),
+        next = Some(6..8),
+        next = None,
+    ]);
+
+    search_asserts!("abbcbbd", "", "str_searcher_empty_needle_ascii_haystack::fwd", [
+        next = Some(0..0),
+        next = Some(1..1),
+        next = Some(2..2),
+        next = Some(3..3),
+        next = Some(4..4),
+        next = Some(5..5),
+        next = Some(6..6),
+        next = Some(7..7),
+        next = None,
+    ]);
+
+    search_asserts!("├──", " ", "str_searcher_multibyte_haystack::fwd", [
+        next = None,
+    ]);
+
+    search_asserts!("├──", "", "str_searcher_empty_needle_multibyte_haystack::fwd", [
+        next = Some(0..0),
+        next = Some(3..3),
+        next = Some(6..6),
+        next = Some(9..9),
+        next = None,
+    ]);
+
+    search_asserts!("", "", "str_searcher_empty_needle_multibyte_haystack::fwd", [
+        next = Some(0..0),
         next = None,
     ]);
 }

@@ -2,26 +2,7 @@ use haystack::{Hay, Haystack, IndexHaystack};
 use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
 use std::iter::FusedIterator;
 use std::ops::Range;
-use std::fmt;
 use std::mem;
-
-// /// This macro generates a Clone impl for string pattern API
-// /// wrapper types of the form X<H, P>
-// macro_rules! derive_pattern_clone {
-//     (clone $t:ident of $h:ident with |$s:ident| $e:expr) => {
-//         impl<H, P> Clone for $t<H, P>
-//         where
-//             H: $h + Clone,
-//             P: Pattern<H>,
-//             P::Searcher: Clone,
-//         {
-//             fn clone(&self) -> Self {
-//                 let $s = self;
-//                 $e
-//             }
-//         }
-//     }
-// }
 
 macro_rules! generate_pattern_iterators {
     {
@@ -49,7 +30,7 @@ macro_rules! generate_pattern_iterators {
         $(#[$forward_iterator_attribute])*
         $(#[$common_stability_attribute])*
         #[derive(Debug, Clone)]
-        pub struct $forward_iterator<H, S>($internal_iterator<H, S>);
+        pub struct $forward_iterator<H, S>($internal_iterator<H, S>) where H: $h;
 
         $(#[$common_stability_attribute])*
         impl<H, S> Iterator for $forward_iterator<H, S>
@@ -68,7 +49,7 @@ macro_rules! generate_pattern_iterators {
         $(#[$reverse_iterator_attribute])*
         $(#[$common_stability_attribute])*
         #[derive(Debug, Clone)]
-        pub struct $reverse_iterator<H, S>($internal_iterator<H, S>);
+        pub struct $reverse_iterator<H, S>($internal_iterator<H, S>) where H: $h;
 
         $(#[$common_stability_attribute])*
         impl<H, S> Iterator for $reverse_iterator<H, S>
@@ -217,9 +198,9 @@ where
 {
     #[inline]
     fn next(&mut self) -> Option<H> {
-        let (start, end) = self.searcher.search(self.rest.borrow())?;
         let rest = mem::replace(&mut self.rest, H::default());
-        let (_, middle, right) = unsafe { rest.split_around_unchecked(start, end) };
+        let range = self.searcher.search(rest.borrow())?;
+        let (_, middle, right) = unsafe { rest.split_around_unchecked(range) };
         self.rest = right;
         Some(middle)
     }
@@ -232,9 +213,9 @@ where
 {
     #[inline]
     fn next_back(&mut self) -> Option<H> {
-        let (start, end) = self.searcher.rsearch(self.rest.borrow())?;
         let rest = mem::replace(&mut self.rest, H::default());
-        let (left, middle, _) = unsafe { rest.split_around_unchecked(start, end) };
+        let range = self.searcher.rsearch(rest.borrow())?;
+        let (left, middle, _) = unsafe { rest.split_around_unchecked(range) };
         self.rest = left;
         Some(middle)
     }
@@ -251,18 +232,18 @@ generate_pattern_iterators! {
     delegate double ended;
 }
 
-pub fn matches<H, P>(haystack: H, pattern: P) -> Matches<H, P>
+pub fn matches<H, P>(haystack: H, pattern: P) -> Matches<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H::Hay>,
 {
-    Matches(MatchesInternal<H, P::Searcher> {
+    Matches(MatchesInternal {
         searcher: pattern.into_searcher(),
         rest: haystack,
     })
 }
 
-pub fn rmatches<H, P>(haystack: H, pattern: P) -> RMatches<H, P>
+pub fn rmatches<H, P>(haystack: H, pattern: P) -> RMatches<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H::Hay>,
@@ -274,749 +255,504 @@ where
     })
 }
 
-pub fn contains<H, P>(haystack: H, pattern: P) -> bool
+pub fn contains<H, P>(hay: &H, pattern: P) -> bool
+where
+    H: Hay + ?Sized,
+    P: Pattern<H>,
+{
+    pattern.into_searcher().search(hay).is_some()
+}
+
+//------------------------------------------------------------------------------
+// MatchIndices
+//------------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct MatchIndicesInternal<H, S>
+where
+    H: IndexHaystack,
+{
+    origin: H::Origin,
+    inner: MatchesInternal<H, S>,
+}
+
+impl<H, S> MatchIndicesInternal<H, S>
+where
+    H: IndexHaystack,
+    S: Searcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next(&mut self) -> Option<(<H::Hay as Hay>::Index, H)> {
+        let m = self.inner.next()?;
+        let index = unsafe { m.range_from_origin(self.origin).start };
+        Some((index, m))
+    }
+}
+
+impl<H, S> MatchIndicesInternal<H, S>
+where
+    H: IndexHaystack,
+    S: ReverseSearcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<(<H::Hay as Hay>::Index, H)> {
+        let m = self.inner.next_back()?;
+        let index = unsafe { m.range_from_origin(self.origin).start };
+        Some((index, m))
+    }
+}
+
+generate_pattern_iterators! {
+    forward:
+        struct MatchIndices;
+    reverse:
+        struct RMatchIndices;
+    stability:
+    internal:
+        MatchIndicesInternal of IndexHaystack yielding ((<H::Hay as Hay>::Index, H));
+    delegate double ended;
+}
+
+pub fn match_indices<H, P>(haystack: H, pattern: P) -> MatchIndices<H, P::Searcher>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+{
+    MatchIndices(MatchIndicesInternal {
+        origin: haystack.origin(),
+        inner: matches(haystack, pattern).0,
+    })
+}
+
+pub fn rmatch_indices<H, P>(haystack: H, pattern: P) -> RMatchIndices<H, P::Searcher>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    RMatchIndices(MatchIndicesInternal {
+        origin: haystack.origin(),
+        inner: rmatches(haystack, pattern).0,
+    })
+}
+
+pub fn find<H, P>(haystack: H, pattern: P) -> Option<<H::Hay as Hay>::Index>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+{
+    match_indices(haystack, pattern).next().map(|s| s.0)
+}
+
+pub fn rfind<H, P>(haystack: H, pattern: P) -> Option<<H::Hay as Hay>::Index>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    rmatch_indices(haystack, pattern).next().map(|s| s.0)
+}
+
+//------------------------------------------------------------------------------
+// MatchRanges
+//------------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+struct MatchRangesInternal<H, S>
+where
+    H: IndexHaystack,
+{
+    origin: H::Origin,
+    inner: MatchesInternal<H, S>,
+}
+
+impl<H, S> MatchRangesInternal<H, S>
+where
+    H: IndexHaystack,
+    S: Searcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next(&mut self) -> Option<(Range<<H::Hay as Hay>::Index>, H)> {
+        let m = self.inner.next()?;
+        let range = unsafe { m.range_from_origin(self.origin) };
+        Some((range, m))
+    }
+}
+
+impl<H, S> MatchRangesInternal<H, S>
+where
+    H: IndexHaystack,
+    S: ReverseSearcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<(Range<<H::Hay as Hay>::Index>, H)> {
+        let m = self.inner.next_back()?;
+        let range = unsafe { m.range_from_origin(self.origin) };
+        Some((range, m))
+    }
+}
+
+generate_pattern_iterators! {
+    forward:
+        struct MatchRanges;
+    reverse:
+        struct RMatchRanges;
+    stability:
+    internal:
+        MatchRangesInternal of IndexHaystack yielding ((Range<<H::Hay as Hay>::Index>, H));
+    delegate double ended;
+}
+
+pub fn match_ranges<H, P>(haystack: H, pattern: P) -> MatchRanges<H, P::Searcher>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+{
+    MatchRanges(MatchRangesInternal {
+        origin: haystack.origin(),
+        inner: matches(haystack, pattern).0,
+    })
+}
+
+pub fn rmatch_ranges<H, P>(haystack: H, pattern: P) -> RMatchRanges<H, P::Searcher>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    RMatchRanges(MatchRangesInternal {
+        origin: haystack.origin(),
+        inner: rmatches(haystack, pattern).0,
+    })
+}
+
+pub fn find_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Hay as Hay>::Index>>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+{
+    match_ranges(haystack, pattern).next().map(|s| s.0)
+}
+
+pub fn rfind_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Hay as Hay>::Index>>
+where
+    H: IndexHaystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    rmatch_ranges(haystack, pattern).next().map(|s| s.0)
+}
+
+//------------------------------------------------------------------------------
+// Split
+//------------------------------------------------------------------------------
+
+#[derive(Debug, Clone)]
+struct SplitInternal<H, S> {
+    searcher: S,
+    rest: H,
+    finished: bool,
+    allow_trailing_empty: bool,
+}
+
+impl<H, S> SplitInternal<H, S>
+where
+    H: Haystack,
+    S: Searcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next(&mut self) -> Option<H> {
+        if self.finished {
+            return None;
+        }
+
+        let rest = mem::replace(&mut self.rest, H::default());
+        match self.searcher.search(rest.borrow()) {
+            Some(range) => {
+                let (left, _, right) = unsafe { rest.split_around_unchecked(range) };
+                self.rest = right;
+                Some(left)
+            }
+            None => {
+                self.finished = true;
+                if !self.allow_trailing_empty && rest.borrow().is_empty() {
+                    None
+                } else {
+                    Some(rest)
+                }
+            }
+        }
+    }
+}
+
+impl<H, S> SplitInternal<H, S>
+where
+    H: Haystack,
+    S: ReverseSearcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<H> {
+        if self.finished {
+            return None;
+        }
+
+        let rest = mem::replace(&mut self.rest, H::default());
+        let after = match self.searcher.rsearch(rest.borrow()) {
+            Some(range) => {
+                let (left, _, right) = unsafe { rest.split_around_unchecked(range) };
+                self.rest = left;
+                right
+            }
+            None => {
+                self.finished = true;
+                rest
+            }
+        };
+
+        if !self.allow_trailing_empty {
+            self.allow_trailing_empty = true;
+            if after.borrow().is_empty() {
+                return self.next_back();
+            }
+        }
+
+        Some(after)
+    }
+}
+
+generate_pattern_iterators! {
+    forward:
+        struct Split;
+    reverse:
+        struct RSplit;
+    stability:
+    internal:
+        SplitInternal of Haystack yielding (H);
+    delegate double ended;
+}
+
+generate_pattern_iterators! {
+    forward:
+        struct SplitTerminator;
+    reverse:
+        struct RSplitTerminator;
+    stability:
+    internal:
+        SplitInternal of Haystack yielding (H);
+    delegate double ended;
+}
+
+pub fn split<H, P>(haystack: H, pattern: P) -> Split<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H::Hay>,
 {
-    matches(haystack, pattern).next().is_some()
+    Split(SplitInternal {
+        searcher: pattern.into_searcher(),
+        rest: haystack,
+        finished: false,
+        allow_trailing_empty: true,
+    })
 }
 
-// //------------------------------------------------------------------------------
-// // MatchIndices
-// //------------------------------------------------------------------------------
-
-// struct MatchIndicesInternal<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     origin: H::Origin,
-//     inner: MatchesInternal<H, P>,
-// }
-
-// impl<H, P> fmt::Debug for MatchIndicesInternal<H, P>
-// where
-//     H: IndexHaystack + fmt::Debug,
-//     P: Pattern<H>,
-//     P::Searcher: fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_struct("MatchIndicesInternal")
-//             .field("origin", &self.origin)
-//             .field("inner", &self.inner)
-//             .finish()
-//     }
-// }
-
-// impl<H, P> MatchIndicesInternal<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     #[inline]
-//     fn next(&mut self) -> Option<(H::Index, H)> {
-//         let m = self.inner.next()?;
-//         let index = unsafe { m.range_from_origin(self.origin).start };
-//         Some((index, m))
-//     }
-// }
-
-// impl<H, P> MatchIndicesInternal<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     #[inline]
-//     fn next_back(&mut self) -> Option<(H::Index, H)> {
-//         let m = self.inner.next_back()?;
-//         let index = unsafe { m.range_from_origin(self.origin).start };
-//         Some((index, m))
-//     }
-// }
-
-// derive_pattern_clone! {
-//     clone MatchIndicesInternal of IndexHaystack
-//     with |s| MatchIndicesInternal {
-//         origin: s.origin,
-//         inner: s.inner.clone(),
-//     }
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct MatchIndices;
-//     reverse:
-//         struct RMatchIndices;
-//     stability:
-//     internal:
-//         MatchIndicesInternal of IndexHaystack yielding ((H::Index, H));
-//     delegate double ended;
-// }
-
-// pub fn match_indices<H, P>(haystack: H, pattern: P) -> MatchIndices<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     MatchIndices(MatchIndicesInternal {
-//         origin: haystack.origin(),
-//         inner: matches(haystack, pattern).0,
-//     })
-// }
-
-// pub fn rmatch_indices<H, P>(haystack: H, pattern: P) -> RMatchIndices<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RMatchIndices(MatchIndicesInternal {
-//         origin: haystack.origin(),
-//         inner: rmatches(haystack, pattern).0,
-//     })
-// }
-
-// pub fn find<H, P>(haystack: H, pattern: P) -> Option<H::Index>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     match_indices(haystack, pattern).next().map(|s| s.0)
-// }
-
-// pub fn rfind<H, P>(haystack: H, pattern: P) -> Option<H::Index>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     rmatch_indices(haystack, pattern).next().map(|s| s.0)
-// }
-
-// //------------------------------------------------------------------------------
-// // MatchRanges
-// //------------------------------------------------------------------------------
-
-// struct MatchRangesInternal<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     origin: H::Origin,
-//     inner: MatchesInternal<H, P>,
-// }
-
-// impl<H, P> fmt::Debug for MatchRangesInternal<H, P>
-// where
-//     H: IndexHaystack + fmt::Debug,
-//     P: Pattern<H>,
-//     P::Searcher: fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_struct("MatchRangesInternal")
-//             .field("origin", &self.origin)
-//             .field("inner", &self.inner)
-//             .finish()
-//     }
-// }
-
-// impl<H, P> MatchRangesInternal<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     #[inline]
-//     fn next(&mut self) -> Option<(Range<H::Index>, H)> {
-//         let m = self.inner.next()?;
-//         let range = unsafe { m.range_from_origin(self.origin) };
-//         Some((range, m))
-//     }
-// }
-
-// impl<H, P> MatchRangesInternal<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     #[inline]
-//     fn next_back(&mut self) -> Option<(Range<H::Index>, H)> {
-//         let m = self.inner.next_back()?;
-//         let range = unsafe { m.range_from_origin(self.origin) };
-//         Some((range, m))
-//     }
-// }
-
-// derive_pattern_clone! {
-//     clone MatchRangesInternal of IndexHaystack
-//     with |s| MatchRangesInternal {
-//         origin: s.origin,
-//         inner: s.inner.clone(),
-//     }
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct MatchRanges;
-//     reverse:
-//         struct RMatchRanges;
-//     stability:
-//     internal:
-//         MatchRangesInternal of IndexHaystack yielding ((Range<H::Index>, H));
-//     delegate double ended;
-// }
-
-// pub fn match_ranges<H, P>(haystack: H, pattern: P) -> MatchRanges<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     MatchRanges(MatchRangesInternal {
-//         origin: haystack.origin(),
-//         inner: matches(haystack, pattern).0,
-//     })
-// }
-
-// pub fn rmatch_ranges<H, P>(haystack: H, pattern: P) -> RMatchRanges<H, P>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RMatchRanges(MatchRangesInternal {
-//         origin: haystack.origin(),
-//         inner: rmatches(haystack, pattern).0,
-//     })
-// }
-
-// pub fn find_range<H, P>(haystack: H, pattern: P) -> Option<Range<H::Index>>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-// {
-//     match_ranges(haystack, pattern).next().map(|s| s.0)
-// }
-
-// pub fn rfind_range<H, P>(haystack: H, pattern: P) -> Option<Range<H::Index>>
-// where
-//     H: IndexHaystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     rmatch_ranges(haystack, pattern).next().map(|s| s.0)
-// }
-
-// //------------------------------------------------------------------------------
-// // Split
-// //------------------------------------------------------------------------------
-
-// struct SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     searcher: P::Searcher,
-//     rest: H,
-//     finished: bool,
-//     allow_trailing_empty: bool,
-// }
-
-// impl<H, P> fmt::Debug for SplitInternal<H, P>
-// where
-//     H: Haystack + fmt::Debug,
-//     P: Pattern<H>,
-//     P::Searcher: fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_struct("SplitNInternal")
-//             .field("searcher", &self.searcher)
-//             .field("rest", &self.rest)
-//             .field("finished", &self.finished)
-//             .finish()
-//     }
-// }
-
-// impl<H, P> SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     #[inline]
-//     fn next(&mut self) -> Option<H> {
-//         if self.finished {
-//             return None;
-//         }
-//         let (before, found) = self.searcher.search(&mut self.rest);
-//         if found.is_none() {
-//             self.finished = true;
-//             if !self.allow_trailing_empty && before.is_empty() {
-//                 return None;
-//             }
-//         }
-//         Some(before)
-//     }
-// }
-
-// impl<H, P> SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     #[inline]
-//     fn next_back(&mut self) -> Option<H> {
-//         if self.finished {
-//             return None;
-//         }
-//         let (found, after) = self.searcher.rsearch(&mut self.rest);
-//         if found.is_none() {
-//             self.finished = true;
-//         }
-//         if !self.allow_trailing_empty {
-//             self.allow_trailing_empty = true;
-//             if after.is_empty() {
-//                 return self.next_back();
-//             }
-//         }
-//         Some(after)
-//     }
-// }
-
-// derive_pattern_clone! {
-//     clone SplitInternal of Haystack
-//     with |s| SplitInternal {
-//         searcher: s.searcher.clone(),
-//         rest: s.rest.clone(),
-//         finished: s.finished,
-//         allow_trailing_empty: s.allow_trailing_empty,
-//     }
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct Split;
-//     reverse:
-//         struct RSplit;
-//     stability:
-//     internal:
-//         SplitInternal of Haystack yielding (H);
-//     delegate double ended;
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct SplitTerminator;
-//     reverse:
-//         struct RSplitTerminator;
-//     stability:
-//     internal:
-//         SplitInternal of Haystack yielding (H);
-//     delegate double ended;
-// }
-
-// pub fn split<H, P>(haystack: H, pattern: P) -> Split<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     Split(SplitInternal {
-//         searcher: pattern.into_searcher(),
-//         rest: haystack,
-//         finished: false,
-//         allow_trailing_empty: true,
-//     })
-// }
-
-// pub fn rsplit<H, P>(haystack: H, pattern: P) -> RSplit<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RSplit(SplitInternal {
-//         searcher: pattern.into_searcher(),
-//         rest: haystack,
-//         finished: false,
-//         allow_trailing_empty: true,
-//     })
-// }
-
-// pub fn split_terminator<H, P>(haystack: H, pattern: P) -> SplitTerminator<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     SplitTerminator(SplitInternal {
-//         searcher: pattern.into_searcher(),
-//         rest: haystack,
-//         finished: false,
-//         allow_trailing_empty: false,
-//     })
-// }
-
-// pub fn rsplit_terminator<H, P>(haystack: H, pattern: P) -> RSplitTerminator<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RSplitTerminator(SplitInternal {
-//         searcher: pattern.into_searcher(),
-//         rest: haystack,
-//         finished: false,
-//         allow_trailing_empty: false,
-//     })
-// }
-// //------------------------------------------------------------------------------
-// // SplitN
-// //------------------------------------------------------------------------------
-
-// struct SplitNInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     searcher: P::Searcher,
-//     rest: H,
-//     n: usize,
-// }
-
-// impl<H, P> fmt::Debug for SplitNInternal<H, P>
-// where
-//     H: Haystack + fmt::Debug,
-//     P: Pattern<H>,
-//     P::Searcher: fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_struct("SplitNInternal")
-//             .field("searcher", &self.searcher)
-//             .field("rest", &self.rest)
-//             .field("n", &self.n)
-//             .finish()
-//     }
-// }
-
-// impl<H, P> SplitNInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     #[inline]
-//     fn next(&mut self) -> Option<H> {
-//         match self.n {
-//             0 => {
-//                 None
-//             }
-//             1 => {
-//                 self.n = 0;
-//                 Some(self.rest.collapse_to_end())
-//             }
-//             n => {
-//                 let (before, found) = self.searcher.search(&mut self.rest);
-//                 if found.is_none() {
-//                     self.n = 0;
-//                 } else {
-//                     self.n = n - 1;
-//                 }
-//                 Some(before)
-//             }
-//         }
-//     }
-// }
-
-// impl<H, P> SplitNInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     #[inline]
-//     fn next_back(&mut self) -> Option<H> {
-//         match self.n {
-//             0 => {
-//                 None
-//             }
-//             1 => {
-//                 self.n = 0;
-//                 Some(self.rest.collapse_to_start())
-//             }
-//             n => {
-//                 let (found, after) = self.searcher.rsearch(&mut self.rest);
-//                 if found.is_none() {
-//                     self.n = 0;
-//                 } else {
-//                     self.n = n - 1;
-//                 }
-//                 Some(after)
-//             }
-//         }
-//     }
-// }
-
-// derive_pattern_clone! {
-//     clone SplitNInternal of Haystack
-//     with |s| SplitNInternal {
-//         searcher: s.searcher.clone(),
-//         rest: s.rest.clone(),
-//         n: s.n,
-//     }
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct SplitN;
-//     reverse:
-//         struct RSplitN;
-//     stability:
-//     internal:
-//         SplitNInternal of Haystack yielding (H);
-//     delegate single ended;
-// }
-
-// pub fn splitn<H, P>(haystack: H, n: usize, pattern: P) -> SplitN<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     SplitN(SplitNInternal {
-//         searcher: pattern.into_searcher(),
-//         rest: haystack,
-//         n,
-//     })
-// }
-
-// pub fn rsplitn<H, P>(haystack: H, n: usize, pattern: P) -> RSplitN<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RSplitN(SplitNInternal {
-//         searcher: pattern.into_searcher(),
-//         rest: haystack,
-//         n,
-//     })
-// }
-
-
-
-// //------------------------------------------------------------------------------
-// // Split
-// //------------------------------------------------------------------------------
-
-// /*
-
-// struct SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     searcher: P::Searcher,
-//     finished: bool,
-//     allow_trailing_empty: bool,
-// }
-
-// impl<H, P> fmt::Debug for SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: fmt::Debug,
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         f.debug_struct("SplitInternal")
-//             .field("searcher", &self.searcher)
-//             .field("finished", &self.finished)
-//             .finish()
-//     }
-// }
-
-// impl<H, P> SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     #[inline]
-//     fn next(&mut self) -> Option<H> {
-//         if self.finished {
-//             return None;
-//         }
-//         let (before, found) = self.searcher.search();
-//         if found.is_none() {
-//             self.finished = true;
-//             if !self.allow_trailing_empty && before.is_empty() {
-//                 return None;
-//             }
-//         }
-//         Some(before)
-//     }
-
-//     #[inline]
-//     fn try_fold<B, F, R>(&mut self, init: B, mut f: F) -> R
-//     where
-//         F: FnMut(B, H) -> R,
-//         R: Try<Ok = B>,
-//     {
-//         let finished = &mut self.finished;
-//         if *finished {
-//             return Try::from_ok(init);
-//         }
-//         let allow_trailing_empty = self.allow_trailing_empty;
-//         self.searcher.try_fold(init, move |prev, before, found| {
-//             if found.is_none() {
-//                 *finished = true;
-//                 if !allow_trailing_empty && before.is_empty() {
-//                     return Try::from_ok(prev);
-//                 }
-//             }
-//             f(prev, before)
-//         })
-//     }
-// }
-
-// impl<H, P> SplitInternal<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     #[inline]
-//     fn next_back(&mut self) -> Option<H> {
-//         if self.finished {
-//             return None;
-//         }
-//         let (mut found, mut after) = self.searcher.rsearch();
-//         if !self.allow_trailing_empty && after.is_empty() {
-//             self.allow_trailing_empty = true;
-//             let (new_found, new_after) = self.searcher.rsearch();
-//             found = new_found;
-//             after = new_after;
-//         }
-//         self.finished = found.is_none();
-//         Some(after)
-//     }
-
-//     #[inline]
-//     fn try_rfold<B, F, R>(&mut self, init: B, mut f: F) -> R
-//     where
-//         F: FnMut(B, H) -> R,
-//         R: Try<Ok = B>,
-//     {
-//         let finished = &mut self.finished;
-//         if *finished {
-//             return Try::from_ok(init);
-//         }
-//         let allow_trailing_empty = &mut self.allow_trailing_empty;
-//         self.searcher.try_rfold(init, move |prev, found, after| {
-//             if !*allow_trailing_empty && after.is_empty() {
-//                 *allow_trailing_empty = true;
-//                 return Try::from_ok(prev);
-//             }
-//             if found.is_none() {
-//                 *finished = true;
-//             }
-//             f(prev, after)
-//         })
-//     }
-// }
-
-// derive_pattern_clone! {
-//     clone SplitInternal of Haystack
-//     with |s| SplitInternal {
-//         searcher: s.searcher.clone(),
-//         finished: s.finished,
-//         allow_trailing_empty: s.allow_trailing_empty,
-//     }
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct Split;
-//     reverse:
-//         struct RSplit;
-//     stability:
-//     internal:
-//         SplitInternal of Haystack yielding (H);
-//     delegate double ended;
-// }
-
-// generate_pattern_iterators! {
-//     forward:
-//         struct SplitTerminator;
-//     reverse:
-//         struct RSplitTerminator;
-//     stability:
-//     internal:
-//         SplitInternal of Haystack yielding (H);
-//     delegate double ended;
-// }
-
-
-
-// //------------------------------------------------------------------------------
-// // Find / Find range
-// //------------------------------------------------------------------------------
-
-
-
-
-// //------------------------------------------------------------------------------
-// // Matches
-// //------------------------------------------------------------------------------
-
-// //------------------------------------------------------------------------------
-// // Splits
-// //------------------------------------------------------------------------------
-
-// pub fn split<H, P>(haystack: H, pattern: P) -> Split<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     Split(SplitInternal {
-//         searcher: pattern.into_searcher(haystack),
-//         finished: false,
-//         allow_trailing_empty: true,
-//     })
-// }
-
-// pub fn rsplit<H, P>(haystack: H, pattern: P) -> RSplit<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RSplit(SplitInternal {
-//         searcher: pattern.into_searcher(haystack),
-//         finished: false,
-//         allow_trailing_empty: true,
-//     })
-// }
-
-// pub fn split_terminator<H, P>(haystack: H, pattern: P) -> SplitTerminator<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-// {
-//     SplitTerminator(SplitInternal {
-//         searcher: pattern.into_searcher(haystack),
-//         finished: false,
-//         allow_trailing_empty: false,
-//     })
-// }
-
-// pub fn rsplit_terminator<H, P>(haystack: H, pattern: P) -> RSplitTerminator<H, P>
-// where
-//     H: Haystack,
-//     P: Pattern<H>,
-//     P::Searcher: ReverseSearcher<H>,
-// {
-//     RSplitTerminator(SplitInternal {
-//         searcher: pattern.into_searcher(haystack),
-//         finished: false,
-//         allow_trailing_empty: false,
-//     })
-// }
-
-// */
+pub fn rsplit<H, P>(haystack: H, pattern: P) -> RSplit<H, P::Searcher>
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    RSplit(SplitInternal {
+        searcher: pattern.into_searcher(),
+        rest: haystack,
+        finished: false,
+        allow_trailing_empty: true,
+    })
+}
+
+pub fn split_terminator<H, P>(haystack: H, pattern: P) -> SplitTerminator<H, P::Searcher>
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+{
+    SplitTerminator(SplitInternal {
+        searcher: pattern.into_searcher(),
+        rest: haystack,
+        finished: false,
+        allow_trailing_empty: false,
+    })
+}
+
+pub fn rsplit_terminator<H, P>(haystack: H, pattern: P) -> RSplitTerminator<H, P::Searcher>
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    RSplitTerminator(SplitInternal {
+        searcher: pattern.into_searcher(),
+        rest: haystack,
+        finished: false,
+        allow_trailing_empty: false,
+    })
+}
+
+//------------------------------------------------------------------------------
+// SplitN
+//------------------------------------------------------------------------------
+
+#[derive(Clone, Debug)]
+struct SplitNInternal<H, S> {
+    searcher: S,
+    rest: H,
+    n: usize,
+}
+
+impl<H, S> SplitNInternal<H, S>
+where
+    H: Haystack,
+    S: Searcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next(&mut self) -> Option<H> {
+        let rest = mem::replace(&mut self.rest, H::default());
+        match self.n {
+            0 => {
+                None
+            }
+            1 => {
+                self.n = 0;
+                Some(rest)
+            }
+            n => {
+                match self.searcher.search(rest.borrow()) {
+                    Some(range) => {
+                        let (left, _, right) = unsafe { rest.split_around_unchecked(range) };
+                        self.n = n - 1;
+                        self.rest = right;
+                        Some(left)
+                    }
+                    None => {
+                        self.n = 0;
+                        Some(rest)
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<H, S> SplitNInternal<H, S>
+where
+    H: Haystack,
+    S: ReverseSearcher<Hay = H::Hay>,
+{
+    #[inline]
+    fn next_back(&mut self) -> Option<H> {
+        let rest = mem::replace(&mut self.rest, H::default());
+        match self.n {
+            0 => {
+                None
+            }
+            1 => {
+                self.n = 0;
+                Some(rest)
+            }
+            n => {
+                match self.searcher.rsearch(rest.borrow()) {
+                    Some(range) => {
+                        let (left, _, right) = unsafe { rest.split_around_unchecked(range) };
+                        self.n = n - 1;
+                        self.rest = left;
+                        Some(right)
+                    }
+                    None => {
+                        self.n = 0;
+                        Some(rest)
+                    }
+                }
+            }
+        }
+    }
+}
+
+generate_pattern_iterators! {
+    forward:
+        struct SplitN;
+    reverse:
+        struct RSplitN;
+    stability:
+    internal:
+        SplitNInternal of Haystack yielding (H);
+    delegate single ended;
+}
+
+pub fn splitn<H, P>(haystack: H, n: usize, pattern: P) -> SplitN<H, P::Searcher>
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+{
+    SplitN(SplitNInternal {
+        searcher: pattern.into_searcher(),
+        rest: haystack,
+        n,
+    })
+}
+
+pub fn rsplitn<H, P>(haystack: H, n: usize, pattern: P) -> RSplitN<H, P::Searcher>
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+    P::Searcher: ReverseSearcher,
+{
+    RSplitN(SplitNInternal {
+        searcher: pattern.into_searcher(),
+        rest: haystack,
+        n,
+    })
+}
+
+//------------------------------------------------------------------------------
+// Replace
+//------------------------------------------------------------------------------
+
+pub fn replace_with<H, P, F, W>(mut src: H, from: P, mut replacer: F, mut writer: W)
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+    F: FnMut(H) -> H,
+    W: FnMut(H),
+{
+    let mut searcher = from.into_searcher();
+    while let Some(range) = searcher.search(src.borrow()) {
+        let (left, middle, right) = unsafe { src.split_around_unchecked(range) };
+        writer(left);
+        writer(replacer(middle));
+        src = right;
+    }
+    writer(src);
+}
+
+pub fn replacen_with<H, P, F, W>(mut src: H, from: P, mut replacer: F, mut n: usize, mut writer: W)
+where
+    H: Haystack,
+    P: Pattern<H::Hay>,
+    F: FnMut(H) -> H,
+    W: FnMut(H),
+{
+    let mut searcher = from.into_searcher();
+    loop {
+        if n == 0 {
+            break;
+        }
+        n -= 1;
+        if let Some(range) = searcher.search(src.borrow()) {
+            let (left, middle, right) = unsafe { src.split_around_unchecked(range) };
+            writer(left);
+            writer(replacer(middle));
+            src = right;
+        } else {
+            break;
+        }
+    }
+    writer(src);
+}

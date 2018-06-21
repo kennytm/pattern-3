@@ -6,7 +6,7 @@ extern crate test;
 use pattern_3::ext;
 use test::{black_box, Bencher};
 
-// ~50000 ns/iter
+// ~70000 ns/iter
 #[bench]
 fn bench_long_with_matches_next(b: &mut Bencher) {
     let sl = [1u32, 2, 9, 1, 3, 7, 5].iter().cloned().cycle().take(50000).collect::<Vec<_>>();
@@ -30,7 +30,7 @@ fn bench_long_with_filter_next(b: &mut Bencher) {
     });
 }
 
-// ~70000 ns/iter
+// ~70000 ns/iter [*slower*]
 #[bench]
 fn bench_long_with_matches_for_each(b: &mut Bencher) {
     let sl = [1u32, 2, 9, 1, 3, 7, 5].iter().cloned().cycle().take(50000).collect::<Vec<_>>();
@@ -40,7 +40,7 @@ fn bench_long_with_matches_for_each(b: &mut Bencher) {
     });
 }
 
-// ~70000 ns/iter
+// ~40000 ns/iter
 #[bench]
 fn bench_long_with_filter_for_each(b: &mut Bencher) {
     let sl = [1u32, 2, 9, 1, 3, 7, 5].iter().cloned().cycle().take(50000).collect::<Vec<_>>();
