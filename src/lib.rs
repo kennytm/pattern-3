@@ -18,13 +18,18 @@
     slice_get_slice,
     core_intrinsics,
     catch_expr,
+    associated_type_defaults,
+    generic_associated_types,
+    slice_index_methods,
+    step_trait,
+    exact_chunks,
 )]
 #![cfg_attr(test, allow(warnings))]
 
 extern crate memchr;
 
-#[macro_use]
-mod macros;
+// #[macro_use]
+// mod macros;
 
 pub mod haystack;
 pub mod pattern;
@@ -32,5 +37,5 @@ mod slices;
 mod strings;
 pub mod ext;
 
-pub use haystack::{Hay, Haystack, IndexHaystack};
+pub use haystack::{Hay, Haystack};
 pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};

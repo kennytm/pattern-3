@@ -3,32 +3,204 @@
 use std::ops::Range;
 use std::fmt::Debug;
 use std::borrow::Borrow;
+use std::mem;
 
 pub trait Hay {
-    type Index;
+    type Index: Copy + Debug + Eq;
+
+    fn empty<'a>() -> &'a Self;
+
+    fn add_len(&self, index: Self::Index) -> Self::Index;
+
+    fn start_index(&self) -> Self::Index;
+
+    fn end_index(&self) -> Self::Index;
+
+    fn validate_range(&self, range: Range<Self::Index>);
+
+    unsafe fn slice_unchecked(&self, range: Range<Self::Index>) -> &Self;
+}
+
+pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Sized {
+    type Hay: Hay + ?Sized;
+    type Span: Span<Haystack = Self> + From<Self> /*+ Into<Self>*/ = UniqueSpan<Self>;
+
+    fn empty() -> Self;
+
+    unsafe fn split_around(self, range: Range<<Self::Hay as Hay>::Index>) -> [Self; 3];
+
+    unsafe fn slice_unchecked(self, range: Range<<Self::Hay as Hay>::Index>) -> Self;
+}
+
+#[derive(Debug)]
+pub struct SharedSpan<'a, Y: Hay + ?Sized + 'a> {
+    haystack: &'a Y,
+    range: Range<Y::Index>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UniqueSpan<H: Haystack> {
+    haystack: H,
+    offset: <H::Hay as Hay>::Index,
+}
+
+impl<'a, Y: Hay + ?Sized + 'a> Clone for SharedSpan<'a, Y> {
+    fn clone(&self) -> Self {
+        Self {
+            haystack: self.haystack,
+            range: self.range.clone(),
+        }
+    }
+}
+
+// mod sealed {
+//     pub trait Sealed {}
+// }
+
+// impl<'a, Y: Hay + ?Sized + 'a> sealed::Sealed for SharedSpan<'a, Y> {}
+// impl<H: Haystack> sealed::Sealed for UniqueSpan<H> {}
+
+impl<'a, Y: Hay + ?Sized + 'a> From<&'a Y> for SharedSpan<'a, Y> {
+    #[inline]
+    fn from(haystack: &'a Y) -> Self {
+        let range = haystack.start_index()..haystack.end_index();
+        Self { haystack, range }
+    }
+}
+
+impl<H: Haystack> From<H> for UniqueSpan<H> {
+    #[inline]
+    fn from(haystack: H) -> Self {
+        let offset = haystack.borrow().start_index();
+        Self { haystack, offset }
+    }
+}
+
+pub trait Span: From<<Self as Span>::Haystack> {
+    type Haystack: Haystack;
+
+    fn original_range(&self) -> Range<<<Self::Haystack as Haystack>::Hay as Hay>::Index>;
+
+    fn borrow(&self) -> SharedSpan<'_, <Self::Haystack as Haystack>::Hay>;
 
     fn is_empty(&self) -> bool;
+
+    #[inline]
+    fn take(&mut self) -> Self {
+        mem::replace(self, Self::Haystack::empty().into())
+    }
+
+    // FIXME: This should be changed to an `impl From<Self> for Self::Haystack`.
+    fn into(self) -> Self::Haystack;
+
+    fn split_around(self, subrange: Range<<<Self::Haystack as Haystack>::Hay as Hay>::Index>) -> [Self; 3];
 }
 
-pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Default {
-    type Hay: Hay + ?Sized;
-
-    unsafe fn split_around_unchecked(
-        self,
-        range: Range<<Self::Hay as Hay>::Index>,
-    ) -> (Self, Self, Self);
-
-    unsafe fn trim_start_unchecked(self, start: <Self::Hay as Hay>::Index) -> Self;
-    unsafe fn trim_end_unchecked(self, end: <Self::Hay as Hay>::Index) -> Self;
+impl<'a, Y: Hay + ?Sized + 'a> SharedSpan<'a, Y> {
+    pub fn into_parts(self) -> (&'a Y, Range<Y::Index>) {
+        (self.haystack, self.range)
+    }
 }
 
-pub trait IndexHaystack: Haystack {
-    type Origin: Copy + Debug;
+impl<'a, Y: Hay + ?Sized + 'a> Span for SharedSpan<'a, Y> {
+    type Haystack = &'a Y;
 
-    /// Obtains the origin of this haystack.
-    fn origin(&self) -> Self::Origin;
+    #[inline]
+    fn original_range(&self) -> Range<Y::Index> {
+        self.range.clone()
+    }
 
-    unsafe fn range_from_origin(&self, origin: Self::Origin) -> Range<<Self::Hay as Hay>::Index>;
+    #[inline]
+    fn borrow(&self) -> SharedSpan<'_, Y> {
+        self.clone()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.range.start == self.range.end
+    }
+
+    #[inline]
+    fn into(self) -> Self::Haystack {
+        unsafe {
+            self.haystack.slice_unchecked(self.range)
+        }
+    }
+
+    #[inline]
+    fn split_around(self, subrange: Range<<<Self::Haystack as Haystack>::Hay as Hay>::Index>) -> [Self; 3] {
+        let haystack = self.haystack;
+        haystack.borrow().validate_range(subrange.clone());
+        [
+            Self { haystack, range: self.range.start..subrange.start },
+            Self { haystack, range: subrange.clone() },
+            Self { haystack, range: subrange.end..self.range.end },
+        ]
+    }
+}
+
+impl<H: Haystack> Span for UniqueSpan<H> {
+    type Haystack = H;
+
+    #[inline]
+    fn original_range(&self) -> Range<<H::Hay as Hay>::Index> {
+        let end = self.haystack.borrow().add_len(self.offset);
+        self.offset..end
+    }
+
+    #[inline]
+    fn borrow(&self) -> SharedSpan<'_, H::Hay> {
+        self.haystack.borrow().into()
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        let hay = self.haystack.borrow();
+        hay.start_index() == hay.end_index()
+    }
+
+    #[inline]
+    fn into(self) -> Self::Haystack {
+        self.haystack
+    }
+
+    #[inline]
+    fn split_around(self, subrange: Range<<<Self::Haystack as Haystack>::Hay as Hay>::Index>) -> [Self; 3] {
+        self.haystack.borrow().validate_range(subrange.clone());
+        let [left, middle, right] = unsafe { self.haystack.split_around(subrange.clone()) };
+        let left_offset = self.offset;
+        let middle_offset = left.borrow().add_len(left_offset);
+        let right_offset = middle.borrow().add_len(middle_offset);
+        [
+            Self { haystack: left, offset: left_offset },
+            Self { haystack: middle, offset: middle_offset },
+            Self { haystack: right, offset: right_offset },
+        ]
+    }
+}
+
+impl<'a, Y: Hay + ?Sized + 'a> Haystack for &'a Y {
+    type Hay = Y;
+    type Span = SharedSpan<'a, Y>;
+
+    #[inline]
+    fn empty() -> Self {
+        Y::empty()
+    }
+
+    #[inline]
+    unsafe fn split_around(self, range: Range<Y::Index>) -> [Self; 3] {
+        [
+            self.slice_unchecked(self.start_index()..range.start),
+            self.slice_unchecked(range.clone()),
+            self.slice_unchecked(range.end..self.end_index()),
+        ]
+    }
+
+    #[inline]
+    unsafe fn slice_unchecked(self, range: Range<Y::Index>) -> Self {
+        Y::slice_unchecked(self, range)
+    }
 }
 
 // /// Haystacks are searchable linear data structures like strings and slices.
