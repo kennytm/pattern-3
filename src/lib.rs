@@ -1,41 +1,36 @@
 #![feature(
-    ptr_offset_from,
-    range_is_empty,
-    fn_traits,
-    unboxed_closures,
-    linkage,
     specialization,
-    try_trait,
-    fundamental,
-    test,
-    align_offset,
-    slice_internals,
-    exact_size_is_empty,
-    trusted_len,
+    // used in two places:
+    //  1. to support using the same two-way algorithm for non-Ord slices
+    //  2. to distinguish SpanBehavior between SharedHaystack and (unique) Haystack.
+
+    unboxed_closures,
+    fn_traits,
+    // used to treat `&[char]` as if a `FnMut(char)->bool`.
+
+    arbitrary_self_types,
+    // just for convenience in Wtf8 impl, not required by Pattern API
+
+    ptr_offset_from,
     iterator_find_map,
-    ptr_wrapping_offset_from,
-    generic_associated_types,
-    slice_get_slice,
-    core_intrinsics,
-    catch_expr,
-    associated_type_defaults,
-    generic_associated_types,
-    slice_index_methods,
-    step_trait,
-    exact_chunks,
+    int_to_from_bytes,
+    // some useful library features
 )]
 #![cfg_attr(test, allow(warnings))]
 
-extern crate memchr;
+#![cfg_attr(not(feature = "std"), no_std)]
+#[cfg(not(feature = "std"))]
+extern crate core as std;
 
-// #[macro_use]
-// mod macros;
+extern crate memchr;
 
 pub mod haystack;
 pub mod pattern;
 mod slices;
 mod strings;
+mod omgwtf8;
 pub mod ext;
 
-pub use haystack::{Hay, Haystack};
-pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
+pub use haystack::{Hay, Haystack, Span};
+pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Checker, ReverseChecker, DoubleEndedChecker};
+pub use omgwtf8::Wtf8;

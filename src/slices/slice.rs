@@ -1,5 +1,5 @@
 use pattern::*;
-use haystack::SharedSpan;
+use haystack::{Hay, Span};
 use std::cmp::{Ordering, max, min};
 use std::usize;
 use std::ops::Range;
@@ -166,7 +166,7 @@ impl Period for ShortPeriod {
 }
 
 #[derive(Debug)]
-pub(crate) struct TwoWaySearcher<'p, T: 'p> {
+pub struct TwoWaySearcher<'p, T: 'p> {
     // constants
     /// critical factorization index
     crit_pos: usize,
@@ -404,41 +404,25 @@ where
     }
 }
 
-//------------------------------------------------------------------------------
-// Empty searcher
-//------------------------------------------------------------------------------
-
-#[derive(Clone, Debug, Default)]
-struct EmptySearcher {
-    consumed_start: bool,
-    consumed_end: bool,
+unsafe impl<'p, T> Searcher<[T]> for TwoWaySearcher<'p, T>
+where
+    T: PartialEq + 'p,
+{
+    #[inline]
+    fn search(&mut self, span: Span<&[T]>) -> Option<Range<usize>> {
+        let (hay, range) = span.into_parts();
+        self.next(hay, range)
+    }
 }
 
-impl EmptySearcher {
+unsafe impl<'p, T> ReverseSearcher<[T]> for TwoWaySearcher<'p, T>
+where
+    T: PartialEq + 'p,
+{
     #[inline]
-    fn next(&mut self, range: Range<usize>) -> Option<Range<usize>> {
-        let mut start = range.start;
-        if !self.consumed_start {
-            self.consumed_start = true;
-        } else if range.is_empty() {
-            return None;
-        } else {
-            start += 1;
-        }
-        Some(start..start)
-    }
-
-    #[inline]
-    fn next_back(&mut self, range: Range<usize>) -> Option<Range<usize>> {
-        let mut end = range.end;
-        if !self.consumed_end {
-            self.consumed_end = true;
-        } else if range.is_empty() {
-            return None;
-        } else {
-            end -= 1;
-        }
-        Some(end..end)
+    fn rsearch(&mut self, span: Span<&[T]>) -> Option<Range<usize>> {
+        let (hay, range) = span.into_parts();
+        self.next_back(hay, range)
     }
 }
 
@@ -447,105 +431,97 @@ impl EmptySearcher {
 //------------------------------------------------------------------------------
 
 #[derive(Debug)]
-enum SliceSearcherImpl<'p, T: 'p> {
+pub struct SliceChecker<'p, T: 'p>(pub(crate) &'p [T]);
+
+unsafe impl<'p, T> Checker<[T]> for SliceChecker<'p, T>
+where
+    T: PartialEq + 'p,
+{
+    #[inline]
+    fn check(&mut self, span: Span<&[T]>) -> Option<usize> {
+        let (hay, range) = span.into_parts();
+        let check_end = range.start + self.0.len();
+        if range.end < check_end {
+            return None;
+        }
+        if unsafe { hay.get_unchecked(range.start..check_end) } == self.0 {
+            Some(check_end)
+        } else {
+            None
+        }
+    }
+}
+
+unsafe impl<'p, T> ReverseChecker<[T]> for SliceChecker<'p, T>
+where
+    T: PartialEq + 'p,
+{
+    #[inline]
+    fn rcheck(&mut self, span: Span<&[T]>) -> Option<usize> {
+        let (hay, range) = span.into_parts();
+        if range.start + self.0.len() > range.end {
+            return None;
+        }
+        let index = range.end - self.0.len();
+        if unsafe { hay.get_unchecked(index..range.end) } == self.0 {
+            Some(index)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum SliceSearcher<'p, T: 'p> {
     TwoWay(TwoWaySearcher<'p, T>),
     Empty(EmptySearcher),
 }
 
-#[derive(Debug)]
-pub struct SliceSearcher<'p, T: 'p>(SliceSearcherImpl<'p, T>);
-
-#[derive(Debug)]
-pub struct SliceChecker<'p, T: 'p>(pub(crate) &'p [T]);
-
-unsafe impl<'p, T> Searcher for SliceSearcher<'p, T>
-where
-    T: PartialEq + 'p,
-{
-    type Hay = [T];
-
-    #[inline]
-    fn search(&mut self, span: SharedSpan<'_, [T]>) -> Option<Range<usize>> {
-        let (hay, range) = span.into_parts();
-        match &mut self.0 {
-            SliceSearcherImpl::TwoWay(searcher) => searcher.next(hay, range),
-            SliceSearcherImpl::Empty(searcher) => searcher.next(range),
+impl<'p, T: PartialEq + 'p> SliceSearcher<'p, T> {
+    pub fn new(slice: &'p [T]) -> Self {
+        if slice.is_empty() {
+            SliceSearcher::Empty(EmptySearcher::default())
+        } else {
+            SliceSearcher::TwoWay(TwoWaySearcher::new(slice))
         }
     }
 }
 
-unsafe impl<'p, T> Checker for SliceChecker<'p, T>
-where
-    T: PartialEq + 'p,
-{
-    type Hay = [T];
-
+impl<'p, T: 'p> Clone for SliceSearcher<'p, T> {
     #[inline]
-    fn is_prefix_of(self, hay: &[T]) -> bool {
-        hay.get(..self.0.len()) == Some(self.0)
-    }
-
-    #[inline]
-    fn trim_start(&mut self, hay: &[T]) -> usize {
-        let needle_len = self.0.len();
-        if needle_len == 0 {
-            return 0;
-        }
-        let mut i = 0;
-        loop {
-            let j = i + needle_len;
-            if j > hay.len() {
-                return hay.len();
-            }
-            if unsafe { hay.get_unchecked(i..j) != self.0 } {
-                return i;
-            }
-            i = j;
+    fn clone(&self) -> Self {
+        match self {
+            SliceSearcher::TwoWay(s) => SliceSearcher::TwoWay(*s),
+            SliceSearcher::Empty(s) => SliceSearcher::Empty(s.clone()),
         }
     }
 }
 
-unsafe impl<'p, T> ReverseSearcher for SliceSearcher<'p, T>
+unsafe impl<'p, T, A> Searcher<A> for SliceSearcher<'p, T>
 where
-    T: PartialEq + 'p,
+    A: Hay<Index = usize> + ?Sized,
+    TwoWaySearcher<'p, T>: Searcher<A>,
 {
     #[inline]
-    fn rsearch(&mut self, span: SharedSpan<'_, [T]>) -> Option<Range<usize>> {
-        let (hay, range) = span.into_parts();
-        match &mut self.0 {
-            SliceSearcherImpl::TwoWay(searcher) => searcher.next_back(hay, range),
-            SliceSearcherImpl::Empty(searcher) => searcher.next_back(range),
+    fn search(&mut self, span: Span<&A>) -> Option<Range<usize>> {
+        match self {
+            SliceSearcher::TwoWay(s) => s.search(span),
+            SliceSearcher::Empty(s) => s.search(span),
         }
     }
 }
 
-unsafe impl<'p, T> ReverseChecker for SliceChecker<'p, T>
+unsafe impl<'p, T, A> ReverseSearcher<A> for SliceSearcher<'p, T>
 where
-    T: PartialEq + 'p,
+    A: Hay<Index = usize> + ?Sized,
+    TwoWaySearcher<'p, T>: ReverseSearcher<A>,
 {
     #[inline]
-    fn is_suffix_of(self, hay: &[T]) -> bool {
-        if self.0.len() > hay.len() {
-            return false;
+    fn rsearch(&mut self, span: Span<&A>) -> Option<Range<usize>> {
+        match self {
+            SliceSearcher::TwoWay(s) => s.rsearch(span),
+            SliceSearcher::Empty(s) => s.rsearch(span),
         }
-        unsafe { hay.get_unchecked((hay.len() - self.0.len())..) == self.0 }
-    }
-
-    #[inline]
-    fn trim_end(&mut self, hay: &[T]) -> usize {
-        let mut j = hay.len();
-        if !self.0.is_empty() {
-            loop {
-                if j < self.0.len() {
-                    break;
-                }
-                if unsafe { hay.get_unchecked((j - self.0.len())..j) } != self.0 {
-                    break;
-                }
-                j -= self.0.len();
-            }
-        }
-        j
     }
 }
 
@@ -560,11 +536,7 @@ macro_rules! impl_pattern {
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
-                SliceSearcher(if self.is_empty() {
-                    SliceSearcherImpl::Empty(EmptySearcher::default())
-                } else {
-                    SliceSearcherImpl::TwoWay(TwoWaySearcher::new(self))
-                })
+                SliceSearcher::new(self)
             }
 
             #[inline]
@@ -577,4 +549,5 @@ macro_rules! impl_pattern {
 
 impl_pattern!(<['p, 'h, T]> &'h [T]);
 impl_pattern!(<['p, 'h, T]> &'h mut [T]);
+#[cfg(feature = "std")]
 impl_pattern!(<['p, T]> Vec<T>);

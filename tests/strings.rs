@@ -1,5 +1,6 @@
 extern crate pattern_3;
 
+use pattern_3::*;
 use pattern_3::ext::*;
 
 #[test]
@@ -543,23 +544,38 @@ fn test_trim_strings() {
     assert_eq!(trim_start("bar:baz", "foo:"), "bar:baz");
     assert_eq!(trim_start("foo:foo:", "foo:"), "");
     assert_eq!(trim_start("", "foo:"), "");
+    assert_eq!(trim_start("adadad", ""), "adadad");
 
     assert_eq!(trim_end("foo:bar:foo:baz", ":baz"), "foo:bar:foo");
     assert_eq!(trim_end("foo:bar:foo:baz", ":bar"), "foo:bar:foo:baz");
     assert_eq!(trim_end(":baz:baz", ":baz"), "");
     assert_eq!(trim_end("", ":baz"), "");
+    assert_eq!(trim_end("adadad", ""), "adadad");
 
     assert_eq!(trim_start("aaaaaaaa", "aaa"), "aa");
     assert_eq!(trim_start("ababababa", "ab"), "a");
+    assert_eq!(trim_end("aaaaaaaa", "aaa"), "aa");
+    assert_eq!(trim_end("ababababa", "ba"), "a");
 }
 
-fn str_replacen<'a>(src: &'a str, from: impl pattern_3::Pattern<&'a str>, to: &'a str, n: usize) -> String {
+// fn str_replacen<'a>(src: &'a str, from: impl pattern_3::Pattern<&'a str>, to: &'a str, n: usize) -> String {
+fn str_replacen<'a, P>(src: &'a str, from: P, to: &'a str, n: usize) -> String
+where
+    P: Pattern<&'a str>,
+    P::Searcher: Searcher<str>,
+    P::Checker: Checker<str>,
+{
     let mut res = String::with_capacity(src.len());
     replacen_with(src, from, |_| to, n, |h| res.push_str(h));
     res
 }
 
-fn str_replace<'a>(src: &'a str, from: impl pattern_3::Pattern<&'a str>, to: &'a str) -> String {
+fn str_replace<'a, P>(src: &'a str, from: P, to: &'a str) -> String
+where
+    P: Pattern<&'a str>,
+    P::Searcher: Searcher<str>,
+    P::Checker: Checker<str>,
+{
     let mut res = String::with_capacity(src.len());
     replace_with(src, from, |_| to, |h| res.push_str(h));
     res
@@ -636,5 +652,41 @@ fn test_replace_pattern() {
     assert_eq!(str_replace(data, 'γ', "😺😺😺"), "abcdαβ😺😺😺δabcdαβ😺😺😺δ");
     assert_eq!(str_replace(data, &['a', 'γ'] as &[_], "😺😺😺"), "😺😺😺bcdαβ😺😺😺δ😺😺😺bcdαβ😺😺😺δ");
     assert_eq!(str_replace(data, |c| c == 'γ', "😺😺😺"), "abcdαβ😺😺😺δabcdαβ😺😺😺δ");
+}
+
+
+#[test]
+fn test_mut_str() {
+    use std::ops::Range;
+
+    let mut s = String::from("a1b2c3d4e");
+    {
+        let res: &mut str = trim(&mut *s, |c: char| c.is_ascii_alphabetic());
+        assert_eq!(res, "1b2c3d4");
+    }
+    {
+        let res: Vec<&mut str> = split(&mut *s, |c: char| c.is_ascii_digit()).collect();
+        assert_eq!(res, vec!["a", "b", "c", "d", "e"]);
+    }
+    {
+        let res: Vec<(Range<usize>, &mut str)> = match_ranges(&mut *s, |c: char| c.is_ascii_digit()).collect();
+        let res = res.into_iter().map(|(r, ss)| (r, &*ss)).collect::<Vec<_>>();
+        assert_eq!(res, vec![
+            (1..2, "1"),
+            (3..4, "2"),
+            (5..6, "3"),
+            (7..8, "4"),
+        ]);
+    }
+    {
+        let res: Vec<(Range<usize>, &mut str)> = rmatch_ranges(&mut *s, |c: char| c.is_ascii_digit()).collect();
+        let res = res.into_iter().map(|(r, ss)| (r, &*ss)).collect::<Vec<_>>();
+        assert_eq!(res, vec![
+            (7..8, "4"),
+            (5..6, "3"),
+            (3..4, "2"),
+            (1..2, "1"),
+        ]);
+    }
 }
 

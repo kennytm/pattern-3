@@ -9,7 +9,6 @@ macro_rules! generate_clone_and_debug {
         impl<H, S> Clone for $name<H, S>
         where
             H: Haystack + Clone,
-            H::Span: Clone,
             S: Clone,
         {
             fn clone(&self) -> Self {
@@ -23,7 +22,6 @@ macro_rules! generate_clone_and_debug {
         impl<H, S> fmt::Debug for $name<H, S>
         where
             H: Haystack + fmt::Debug,
-            H::Span: fmt::Debug,
             S: fmt::Debug,
         {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -70,7 +68,7 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> Iterator for $forward_iterator<H, S>
         where
             H: Haystack,
-            S: Searcher<Hay = H::Hay>,
+            S: Searcher<H::Hay>,
         {
             type Item = $iterty;
 
@@ -92,7 +90,7 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> Iterator for $reverse_iterator<H, S>
         where
             H: Haystack,
-            S: ReverseSearcher<Hay = H::Hay>,
+            S: ReverseSearcher<H::Hay>,
         {
             type Item = $iterty;
 
@@ -106,14 +104,14 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> FusedIterator for $forward_iterator<H, S>
         where
             H: Haystack,
-            S: Searcher<Hay = H::Hay>,
+            S: Searcher<H::Hay>,
         {}
 
         // #[stable(feature = "fused", since = "1.26.0")]
         impl<H, S> FusedIterator for $reverse_iterator<H, S>
         where
             H: Haystack,
-            S: ReverseSearcher<Hay = H::Hay>,
+            S: ReverseSearcher<H::Hay>,
         {}
 
         generate_pattern_iterators!($($t)* with $(#[$common_stability_attribute])*,
@@ -129,7 +127,7 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> DoubleEndedIterator for $forward_iterator<H, S>
         where
             H: Haystack,
-            S: DoubleEndedSearcher<Hay = H::Hay>,
+            S: DoubleEndedSearcher<H::Hay>,
         {
             #[inline]
             fn next_back(&mut self) -> Option<Self::Item> {
@@ -141,7 +139,7 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> DoubleEndedIterator for $reverse_iterator<H, S>
         where
             H: Haystack,
-            S: DoubleEndedSearcher<Hay = H::Hay>,
+            S: DoubleEndedSearcher<H::Hay>,
         {
             #[inline]
             fn next_back(&mut self) -> Option<Self::Item> {
@@ -165,16 +163,16 @@ where
     H: Haystack,
     P: Pattern<H>,
 {
-    pattern.into_checker().is_prefix_of(haystack.borrow())
+    pattern.into_checker().check(haystack.borrow().into()).is_some()
 }
 
 pub fn ends_with<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: ReverseChecker,
+    P::Checker: ReverseChecker<H::Hay>,
 {
-    pattern.into_checker().is_suffix_of(haystack.borrow())
+    pattern.into_checker().rcheck(haystack.borrow().into()).is_some()
 }
 
 //------------------------------------------------------------------------------
@@ -199,7 +197,7 @@ pub fn trim_end<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: ReverseChecker,
+    P::Checker: ReverseChecker<H::Hay>,
 {
     let range = {
         let hay = haystack.borrow();
@@ -214,7 +212,7 @@ pub fn trim<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: DoubleEndedChecker,
+    P::Checker: DoubleEndedChecker<H::Hay>,
 {
     let mut checker = pattern.into_checker();
     let range = {
@@ -237,19 +235,19 @@ where
     H: Haystack,
 {
     searcher: S,
-    rest: H::Span,
+    rest: Span<H>,
 }
 
 impl<H, S> MatchesInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<Hay = H::Hay>,
+    S: Searcher<H::Hay>,
 {
     #[inline]
-    fn next_spanned(&mut self) -> Option<H::Span> {
+    fn next_spanned(&mut self) -> Option<Span<H>> {
         let rest = self.rest.take();
         let range = self.searcher.search(rest.borrow())?;
-        let [_, middle, right] = rest.split_around(range);
+        let [_, middle, right] = unsafe { rest.split_around(range) };
         self.rest = right;
         Some(middle)
     }
@@ -263,13 +261,13 @@ where
 impl<H, S> MatchesInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<Hay = H::Hay>,
+    S: ReverseSearcher<H::Hay>,
 {
     #[inline]
-    fn next_back_spanned(&mut self) -> Option<H::Span> {
+    fn next_back_spanned(&mut self) -> Option<Span<H>> {
         let rest = self.rest.take();
         let range = self.searcher.rsearch(rest.borrow())?;
-        let [left, middle, _] = rest.split_around(range);
+        let [left, middle, _] = unsafe { rest.split_around(range) };
         self.rest = left;
         Some(middle)
     }
@@ -306,7 +304,7 @@ pub fn rmatches<H, P>(haystack: H, pattern: P) -> RMatches<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     RMatches(MatchesInternal {
         searcher: pattern.into_searcher(),
@@ -320,7 +318,7 @@ where
     P: Pattern<H>,
 {
     pattern.into_searcher()
-        .search(H::Span::from(haystack).borrow())
+        .search(haystack.borrow().into())
         .is_some()
 }
 
@@ -337,7 +335,7 @@ generate_clone_and_debug!(MatchIndicesInternal, inner);
 impl<H, S> MatchIndicesInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<Hay = H::Hay>,
+    S: Searcher<H::Hay>,
 {
     #[inline]
     fn next(&mut self) -> Option<(<H::Hay as Hay>::Index, H)> {
@@ -350,7 +348,7 @@ where
 impl<H, S> MatchIndicesInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<Hay = H::Hay>,
+    S: ReverseSearcher<H::Hay>,
 {
     #[inline]
     fn next_back(&mut self) -> Option<(<H::Hay as Hay>::Index, H)> {
@@ -385,7 +383,7 @@ pub fn rmatch_indices<H, P>(haystack: H, pattern: P) -> RMatchIndices<H, P::Sear
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     RMatchIndices(MatchIndicesInternal {
         inner: rmatches(haystack, pattern).0,
@@ -398,7 +396,7 @@ where
     P: Pattern<H>,
 {
     pattern.into_searcher()
-        .search(H::Span::from(haystack).borrow())
+        .search(haystack.borrow().into())
         .map(|r| r.start)
 }
 
@@ -406,10 +404,10 @@ pub fn rfind<H, P>(haystack: H, pattern: P) -> Option<<H::Hay as Hay>::Index>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     pattern.into_searcher()
-        .rsearch(H::Span::from(haystack).borrow())
+        .rsearch(haystack.borrow().into())
         .map(|r| r.start)
 }
 
@@ -429,7 +427,7 @@ generate_clone_and_debug!(MatchRangesInternal, inner);
 impl<H, S> MatchRangesInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<Hay = H::Hay>,
+    S: Searcher<H::Hay>,
 {
     #[inline]
     fn next(&mut self) -> Option<(Range<<H::Hay as Hay>::Index>, H)> {
@@ -442,7 +440,7 @@ where
 impl<H, S> MatchRangesInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<Hay = H::Hay>,
+    S: ReverseSearcher<H::Hay>,
 {
     #[inline]
     fn next_back(&mut self) -> Option<(Range<<H::Hay as Hay>::Index>, H)> {
@@ -477,7 +475,7 @@ pub fn rmatch_ranges<H, P>(haystack: H, pattern: P) -> RMatchRanges<H, P::Search
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     RMatchRanges(MatchRangesInternal {
         inner: rmatches(haystack, pattern).0,
@@ -490,17 +488,17 @@ where
     P: Pattern<H>,
 {
     pattern.into_searcher()
-        .search(H::Span::from(haystack).borrow())
+        .search(haystack.borrow().into())
 }
 
 pub fn rfind_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Hay as Hay>::Index>>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     pattern.into_searcher()
-        .rsearch(H::Span::from(haystack).borrow())
+        .rsearch(haystack.borrow().into())
 }
 
 //------------------------------------------------------------------------------
@@ -513,7 +511,7 @@ where
     H: Haystack,
 {
     searcher: S,
-    rest: H::Span,
+    rest: Span<H>,
     finished: bool,
     allow_trailing_empty: bool,
 }
@@ -521,7 +519,7 @@ where
 impl<H, S> SplitInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<Hay = H::Hay>,
+    S: Searcher<H::Hay>,
 {
     #[inline]
     fn next(&mut self) -> Option<H> {
@@ -532,7 +530,7 @@ where
         let mut rest = self.rest.take();
         match self.searcher.search(rest.borrow()) {
             Some(subrange) => {
-                let [left, _, right] = rest.split_around(subrange);
+                let [left, _, right] = unsafe { rest.split_around(subrange) };
                 self.rest = right;
                 rest = left;
             }
@@ -550,7 +548,7 @@ where
 impl<H, S> SplitInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<Hay = H::Hay>,
+    S: ReverseSearcher<H::Hay>,
 {
     #[inline]
     fn next_back(&mut self) -> Option<H> {
@@ -561,7 +559,7 @@ where
         let rest = self.rest.take();
         let after = match self.searcher.rsearch(rest.borrow()) {
             Some(range) => {
-                let [left, _, right] = rest.split_around(range);
+                let [left, _, right] = unsafe { rest.split_around(range) };
                 self.rest = left;
                 right
             }
@@ -621,7 +619,7 @@ pub fn rsplit<H, P>(haystack: H, pattern: P) -> RSplit<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     RSplit(SplitInternal {
         searcher: pattern.into_searcher(),
@@ -648,7 +646,7 @@ pub fn rsplit_terminator<H, P>(haystack: H, pattern: P) -> RSplitTerminator<H, P
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     RSplitTerminator(SplitInternal {
         searcher: pattern.into_searcher(),
@@ -668,14 +666,14 @@ where
     H: Haystack,
 {
     searcher: S,
-    rest: H::Span,
+    rest: Span<H>,
     n: usize,
 }
 
 impl<H, S> SplitNInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<Hay = H::Hay>,
+    S: Searcher<H::Hay>,
 {
     #[inline]
     fn next(&mut self) -> Option<H> {
@@ -690,7 +688,7 @@ where
             n => {
                 match self.searcher.search(rest.borrow()) {
                     Some(range) => {
-                        let [left, _, right] = rest.split_around(range);
+                        let [left, _, right] = unsafe { rest.split_around(range) };
                         self.n = n - 1;
                         self.rest = right;
                         rest = left;
@@ -708,7 +706,7 @@ where
 impl<H, S> SplitNInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<Hay = H::Hay>,
+    S: ReverseSearcher<H::Hay>,
 {
     #[inline]
     fn next_back(&mut self) -> Option<H> {
@@ -723,7 +721,7 @@ where
             n => {
                 match self.searcher.rsearch(rest.borrow()) {
                     Some(range) => {
-                        let [left, _, right] = rest.split_around(range);
+                        let [left, _, right] = unsafe { rest.split_around(range) };
                         self.n = n - 1;
                         self.rest = left;
                         rest = right;
@@ -765,7 +763,7 @@ pub fn rsplitn<H, P>(haystack: H, n: usize, pattern: P) -> RSplitN<H, P::Searche
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher,
+    P::Searcher: ReverseSearcher<H::Hay>,
 {
     RSplitN(SplitNInternal {
         searcher: pattern.into_searcher(),
@@ -786,9 +784,9 @@ where
     W: FnMut(H),
 {
     let mut searcher = from.into_searcher();
-    let mut src = H::Span::from(src);
+    let mut src = Span::from(src);
     while let Some(range) = searcher.search(src.borrow()) {
-        let [left, middle, right] = src.split_around(range);
+        let [left, middle, right] = unsafe { src.split_around(range) };
         writer(Span::into(left));
         writer(replacer(Span::into(middle)));
         src = right;
@@ -804,14 +802,14 @@ where
     W: FnMut(H),
 {
     let mut searcher = from.into_searcher();
-    let mut src = H::Span::from(src);
+    let mut src = Span::from(src);
     loop {
         if n == 0 {
             break;
         }
         n -= 1;
         if let Some(range) = searcher.search(src.borrow()) {
-            let [left, middle, right] = src.split_around(range);
+            let [left, middle, right] = unsafe { src.split_around(range) };
             writer(Span::into(left));
             writer(replacer(Span::into(middle)));
             src = right;

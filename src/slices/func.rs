@@ -1,11 +1,9 @@
 use pattern::*;
-use haystack::SharedSpan;
-use std::marker::PhantomData;
+use haystack::Span;
 use std::ops::Range;
 
-pub struct ElemSearcher<T, F> {
+pub struct ElemSearcher<F> {
     predicate: F,
-    _marker: PhantomData<T>,
 }
 
 macro_rules! impl_pattern {
@@ -14,14 +12,13 @@ macro_rules! impl_pattern {
         where
             F: FnMut(&T) -> bool,
         {
-            type Searcher = ElemSearcher<T, F>;
-            type Checker = ElemSearcher<T, F>;
+            type Searcher = ElemSearcher<F>;
+            type Checker = ElemSearcher<F>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
                 ElemSearcher {
                     predicate: self,
-                    _marker: PhantomData,
                 }
             }
 
@@ -29,7 +26,6 @@ macro_rules! impl_pattern {
             fn into_checker(self) -> Self::Checker {
                 ElemSearcher {
                     predicate: self,
-                    _marker: PhantomData,
                 }
             }
         }
@@ -38,16 +34,15 @@ macro_rules! impl_pattern {
 
 impl_pattern!(<['h, T, F]> &'h [T]);
 impl_pattern!(<['h, T, F]> &'h mut [T]);
+#[cfg(feature = "std")]
 impl_pattern!(<[T, F]> Vec<T>);
 
-unsafe impl<T, F> Searcher for ElemSearcher<T, F>
+unsafe impl<T, F> Searcher<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {
-    type Hay = [T];
-
     #[inline]
-    fn search(&mut self, span: SharedSpan<'_, [T]>) -> Option<Range<usize>> {
+    fn search(&mut self, span: Span<&[T]>) -> Option<Range<usize>> {
         let (rest, range) = span.into_parts();
         let start = range.start;
         let pos = rest[range].iter().position(&mut self.predicate)?;
@@ -55,25 +50,28 @@ where
     }
 }
 
-unsafe impl<T, F> Checker for ElemSearcher<T, F>
+unsafe impl<T, F> Checker<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {
-    type Hay = [T];
-
     #[inline]
-    fn is_prefix_of(mut self, hay: &[T]) -> bool {
-        if let Some(x) = hay.first() {
-            (self.predicate)(x)
+    fn check(&mut self, span: Span<&[T]>) -> Option<usize> {
+        let (hay, range) = span.into_parts();
+        if range.end == range.start {
+            return None;
+        }
+        let x = unsafe { hay.get_unchecked(range.start) };
+        if (self.predicate)(x) {
+            Some(range.start + 1)
         } else {
-            false
+            None
         }
     }
 
     #[inline]
     fn trim_start(&mut self, hay: &[T]) -> usize {
-        let len = hay.len();
         let mut it = hay.iter();
+        let len = hay.len();
         if it.find(|x| !(self.predicate)(x)).is_some() {
             len - it.as_slice().len() - 1
         } else {
@@ -82,12 +80,12 @@ where
     }
 }
 
-unsafe impl<T, F> ReverseSearcher for ElemSearcher<T, F>
+unsafe impl<T, F> ReverseSearcher<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {
     #[inline]
-    fn rsearch(&mut self, span: SharedSpan<'_, [T]>) -> Option<Range<usize>> {
+    fn rsearch(&mut self, span: Span<&[T]>) -> Option<Range<usize>> {
         let (rest, range) = span.into_parts();
         let start = range.start;
         let pos = rest[range].iter().rposition(&mut self.predicate)?;
@@ -95,16 +93,22 @@ where
     }
 }
 
-unsafe impl<T, F> ReverseChecker for ElemSearcher<T, F>
+unsafe impl<T, F> ReverseChecker<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {
     #[inline]
-    fn is_suffix_of(mut self, hay: &[T]) -> bool {
-        if let Some(x) = hay.last() {
-            (self.predicate)(x)
+    fn rcheck(&mut self, span: Span<&[T]>) -> Option<usize> {
+        let (hay, range) = span.into_parts();
+        if range.start == range.end {
+            return None;
+        }
+        let last = range.end - 1;
+        let x = unsafe { hay.get_unchecked(last) };
+        if (self.predicate)(x) {
+            Some(last)
         } else {
-            false
+            None
         }
     }
 
@@ -114,12 +118,12 @@ where
     }
 }
 
-unsafe impl<T, F> DoubleEndedSearcher for ElemSearcher<T, F>
+unsafe impl<T, F> DoubleEndedSearcher<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {}
 
-unsafe impl<T, F> DoubleEndedChecker for ElemSearcher<T, F>
+unsafe impl<T, F> DoubleEndedChecker<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {}

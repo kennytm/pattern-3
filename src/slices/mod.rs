@@ -10,11 +10,6 @@ impl<T> Hay for [T] {
     }
 
     #[inline]
-    fn add_len(&self, index: usize) -> usize {
-        index + self.len()
-    }
-
-    #[inline]
     fn start_index(&self) -> usize {
         0
     }
@@ -30,9 +25,18 @@ impl<T> Hay for [T] {
     }
 
     #[inline]
-    fn validate_range(&self, range: Range<usize>) {
-        debug_assert!(range.start <= range.end);
-        debug_assert!(range.end <= self.len());
+    unsafe fn next_index(&self, index: Self::Index) -> Self::Index {
+        index + 1
+    }
+
+    #[inline]
+    unsafe fn prev_index(&self, index: Self::Index) -> Self::Index {
+        index - 1
+    }
+
+    #[inline]
+    unsafe fn restore_range(&self, range: Range<usize>, subrange: Range<usize>) -> Range<usize> {
+        (subrange.start + range.start)..(subrange.end + range.start)
     }
 }
 
@@ -57,6 +61,7 @@ impl<'h, T: 'h> Haystack for &'h mut [T] {
     }
 }
 
+#[cfg(feature = "std")]
 impl<T> Haystack for Vec<T> {
     type Hay = [T];
 

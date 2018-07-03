@@ -1,35 +1,34 @@
-/*
-
 extern crate pattern_3;
 extern crate regex;
 
 use regex::Regex;
-use pattern_3::{Pattern, Searcher};
-use pattern_3::ext::match_ranges;
+use pattern_3::*;
+use pattern_3::ext::{match_ranges, trim_start};
 use std::ops::Range;
 
-struct UnanchoredRegex(Regex);
+struct RegexWrapper(Regex);
 
-struct UnanchoredRegexSearcher<'p> {
+struct RegexSearcher<'p> {
     regex: &'p Regex,
     allow_empty_match: bool,
 }
 
-unsafe impl<'p> Searcher for UnanchoredRegexSearcher<'p> {
-    type Hay = str;
-
-    fn search(&mut self, hay: &str) -> Option<Range<usize>> {
-        let mut st = 0;
-        while st <= hay.len() {
+unsafe impl<'p> Searcher<str> for RegexSearcher<'p> {
+    fn search(&mut self, span: Span<&str>) -> Option<Range<usize>> {
+        let (hay, range) = span.into_parts();
+        let mut st = range.start;
+        while st <= range.end {
             let m = self.regex.find_at(hay, st)?;
             if m.end() == st {
                 if !self.allow_empty_match {
                     self.allow_empty_match = true;
-                    st += hay[st..].chars().next()?.len_utf8();
+                    if st == range.end {
+                        return None;
+                    }
+                    st = unsafe { hay.next_index(st) };
                     continue;
                 }
             }
-
             self.allow_empty_match = false;
             return Some(m.start()..m.end());
         }
@@ -37,44 +36,36 @@ unsafe impl<'p> Searcher for UnanchoredRegexSearcher<'p> {
     }
 }
 
-impl<'p> Pattern<str> for &'p UnanchoredRegex {
-    type Searcher = UnanchoredRegexSearcher<'p>;
+unsafe impl<'p> Checker<str> for RegexSearcher<'p> {
+    fn check(&mut self, span: Span<&str>) -> Option<usize> {
+        let (hay, range) = span.into_parts();
+        let m = self.regex.find_at(hay, range.start)?;
+        if m.start() == range.start {
+            Some(m.end())
+        } else {
+            None
+        }
+    }
+}
 
-    fn into_searcher(self) -> Self::Searcher {
-        UnanchoredRegexSearcher {
+impl<'h, 'p> Pattern<&'h str> for &'p RegexWrapper {
+    type Searcher = RegexSearcher<'p>;
+    type Checker = RegexSearcher<'p>;
+
+    fn into_searcher(self) -> RegexSearcher<'p> {
+        RegexSearcher {
             regex: &self.0,
             allow_empty_match: true,
         }
     }
 
-    fn is_prefix_of(self, hay: &str) -> bool {
-        self.0.find(hay).map(|m| m.start()) == Some(0)
-    }
-
-    fn trim_start(&mut self, hay: &str) -> usize {
-        let mut start = 0;
-        for m in self.0.find_iter(hay) {
-            if m.start() == start {
-                start = m.end();
-            } else {
-                break;
-            }
-        }
-        start
-    }
-
-    // FIXME: Because of issue #20021 we have to supply these two impls
-    fn is_suffix_of(self, _: &str) -> bool {
-        unreachable!()
-    }
-    fn trim_end(&mut self, _: &str) -> usize {
-        unreachable!()
+    fn into_checker(self) -> RegexSearcher<'p> {
+        self.into_searcher()
     }
 }
 
-
 fn do_test(re: &str, haystack: &str, expected: &[(Range<usize>, &str)]) {
-    let pattern = UnanchoredRegex(Regex::new(re).unwrap());
+    let pattern = RegexWrapper(Regex::new(re).unwrap());
     assert_eq!(match_ranges(haystack, &pattern).collect::<Vec<_>>(), expected);
 }
 
@@ -164,15 +155,25 @@ fn searcher_unicode() {
     ]);
 }
 
-// Note that `UnanchoredRegex` would ignore all anchors (e.g. `^` and `\b`) at
-// the beginning. To demonstrate:
 #[test]
-fn bug_unanchored() {
+fn test_anchored() {
     do_test(r"^a", "aaa", &[
         (0..1, "a"),
-        (1..2, "a"),
-        (2..3, "a"),
     ]);
 }
 
-*/
+#[test]
+fn test_word_bounary() {
+    do_test(r"\b", "hello::world", &[
+        (0..0, ""),
+        (5..5, ""),
+        (7..7, ""),
+        (12..12, ""),
+    ]);
+}
+
+#[test]
+fn test_trim_start() {
+    assert_eq!(trim_start("aaabbb", &RegexWrapper(Regex::new("a*").unwrap())), "bbb");
+    assert_eq!(trim_start("aaabbb", &RegexWrapper(Regex::new("^a").unwrap())), "aabbb");
+}

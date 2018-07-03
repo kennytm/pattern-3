@@ -1,5 +1,5 @@
 use pattern::*;
-use haystack::SharedSpan;
+use haystack::Span;
 use memchr::{memchr, memrchr};
 use std::ops::Range;
 
@@ -37,11 +37,9 @@ impl CharSearcher {
     }
 }
 
-unsafe impl Searcher for CharSearcher {
-    type Hay = str;
-
+unsafe impl Searcher<str> for CharSearcher {
     #[inline]
-    fn search(&mut self, span: SharedSpan<'_, str>) -> Option<Range<usize>> {
+    fn search(&mut self, span: Span<&str>) -> Option<Range<usize>> {
         let (hay, range) = span.into_parts();
         let mut finger = range.start;
         let bytes = hay.as_bytes();
@@ -58,26 +56,33 @@ unsafe impl Searcher for CharSearcher {
     }
 }
 
-unsafe impl Checker for CharChecker {
-    type Hay = str;
-
+unsafe impl Checker<str> for CharChecker {
     #[inline]
-    fn is_prefix_of(self, haystack: &str) -> bool {
+    fn check(&mut self, span: Span<&str>) -> Option<usize> {
+        let (hay, range) = span.into_parts();
         let mut utf8_encoded = [0u8; 4];
         let encoded = self.0.encode_utf8(&mut utf8_encoded);
-        haystack.as_bytes().get(..encoded.len()) == Some(encoded.as_bytes())
+        let check_end = range.start + encoded.len();
+        if range.end < check_end {
+            return None;
+        }
+        if unsafe { hay.as_bytes().get_unchecked(range.start..check_end) } == encoded.as_bytes() {
+            Some(check_end)
+        } else {
+            None
+        }
     }
 
     #[inline]
-    fn trim_start(&mut self, haystack: &str) -> usize {
+    fn trim_start(&mut self, hay: &str) -> usize {
         let mut checker = Pattern::<&str>::into_checker(|c: char| c == self.0);
-        checker.trim_start(haystack)
+        checker.trim_start(hay)
     }
 }
 
-unsafe impl ReverseSearcher for CharSearcher {
+unsafe impl ReverseSearcher<str> for CharSearcher {
     #[inline]
-    fn rsearch(&mut self, span: SharedSpan<'_, str>) -> Option<Range<usize>> {
+    fn rsearch(&mut self, span: Span<&str>) -> Option<Range<usize>> {
         let (hay, range) = span.into_parts();
         let start = range.start;
         let mut bytes = hay[range].as_bytes();
@@ -95,13 +100,30 @@ unsafe impl ReverseSearcher for CharSearcher {
     }
 }
 
-unsafe impl ReverseChecker for CharChecker {
+unsafe impl ReverseChecker<str> for CharChecker {
     #[inline]
-    fn is_suffix_of(self, haystack: &str) -> bool {
+    fn rcheck(&mut self, span: Span<&str>) -> Option<usize> {
+        // let (hay, range) = span.into_parts();
+        // let mut utf8_encoded = [0u8; 4];
+        // let encoded_len = self.0.encode_utf8(&mut utf8_encoded).len();
+        // let index = range.end.wrapping_sub(encoded_len);
+        // if hay.as_bytes().get(range.start..index) == Some(&utf8_encoded[..encoded_len]) {
+        //     Some(index)
+        // } else {
+        //     None
+        // }
+        let (hay, range) = span.into_parts();
         let mut utf8_encoded = [0u8; 4];
-        let encoded_len = self.0.encode_utf8(&mut utf8_encoded).len();
-        let suffix = haystack.as_bytes().get(haystack.len().wrapping_sub(encoded_len)..);
-        suffix == Some(&utf8_encoded[..encoded_len])
+        let encoded = self.0.encode_utf8(&mut utf8_encoded);
+        if range.start + encoded.len() > range.end {
+            return None;
+        }
+        let check_start = range.end - encoded.len();
+        if unsafe { hay.as_bytes().get_unchecked(check_start..range.end) } == encoded.as_bytes() {
+            Some(check_start)
+        } else {
+            None
+        }
     }
 
     #[inline]
@@ -111,8 +133,8 @@ unsafe impl ReverseChecker for CharChecker {
     }
 }
 
-unsafe impl DoubleEndedSearcher for CharSearcher {}
-unsafe impl DoubleEndedChecker for CharChecker {}
+unsafe impl DoubleEndedSearcher<str> for CharSearcher {}
+unsafe impl DoubleEndedChecker<str> for CharChecker {}
 
 macro_rules! impl_pattern {
     ($ty:ty) => {

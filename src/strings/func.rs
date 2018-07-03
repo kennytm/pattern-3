@@ -1,5 +1,5 @@
 use pattern::*;
-use haystack::SharedSpan;
+use haystack::Span;
 use std::ops::Range;
 
 #[derive(Copy, Clone, Debug)]
@@ -31,11 +31,9 @@ pub struct MultiCharSearcher<F> {
     predicate: F,
 }
 
-unsafe impl<F: FnMut(char) -> bool> Searcher for MultiCharSearcher<F> {
-    type Hay = str;
-
+unsafe impl<F: FnMut(char) -> bool> Searcher<str> for MultiCharSearcher<F> {
     #[inline]
-    fn search(&mut self, span: SharedSpan<'_, str>) -> Option<Range<usize>> {
+    fn search(&mut self, span: Span<&str>) -> Option<Range<usize>> {
         let (hay, range) = span.into_parts();
         let st = range.start;
         let h = &hay[range];
@@ -47,32 +45,36 @@ unsafe impl<F: FnMut(char) -> bool> Searcher for MultiCharSearcher<F> {
     }
 }
 
-unsafe impl<F: FnMut(char) -> bool> Checker for MultiCharSearcher<F> {
-    type Hay = str;
-
+unsafe impl<F: FnMut(char) -> bool> Checker<str> for MultiCharSearcher<F> {
     #[inline]
-    fn is_prefix_of(mut self, rest: &str) -> bool {
-        if let Some(c) = rest.chars().next() {
-            (self.predicate)(c)
+    fn check(&mut self, hay: Span<&str>) -> Option<usize> {
+        let (hay, range) = hay.into_parts();
+        let start = range.start;
+        if start == range.end {
+            return None;
+        }
+        let c = unsafe { hay.get_unchecked(start..) }.chars().next().unwrap();
+        if (self.predicate)(c) {
+            Some(start + c.len_utf8())
         } else {
-            false
+            None
         }
     }
 
     #[inline]
-    fn trim_start(&mut self, rest: &str) -> usize {
-        let mut chars = rest.chars();
+    fn trim_start(&mut self, hay: &str) -> usize {
+        let mut chars = hay.chars();
         let unconsume_amount = chars
             .find_map(|c| if !(self.predicate)(c) { Some(c.len_utf8()) } else { None })
             .unwrap_or(0);
-        let consumed = unsafe { chars.as_str().as_ptr().offset_from(rest.as_ptr()) as usize };
+        let consumed = unsafe { chars.as_str().as_ptr().offset_from(hay.as_ptr()) as usize };
         consumed - unconsume_amount
     }
 }
 
-unsafe impl<F: FnMut(char) -> bool> ReverseSearcher for MultiCharSearcher<F> {
+unsafe impl<F: FnMut(char) -> bool> ReverseSearcher<str> for MultiCharSearcher<F> {
     #[inline]
-    fn rsearch(&mut self, span: SharedSpan<'_, str>) -> Option<Range<usize>> {
+    fn rsearch(&mut self, span: Span<&str>) -> Option<Range<usize>> {
         let (hay, range) = span.into_parts();
         let st = range.start;
         let h = &hay[range];
@@ -83,21 +85,27 @@ unsafe impl<F: FnMut(char) -> bool> ReverseSearcher for MultiCharSearcher<F> {
     }
 }
 
-unsafe impl<F: FnMut(char) -> bool> ReverseChecker for MultiCharSearcher<F> {
+unsafe impl<F: FnMut(char) -> bool> ReverseChecker<str> for MultiCharSearcher<F> {
     #[inline]
-    fn is_suffix_of(mut self, rest: &str) -> bool {
-        if let Some(c) = rest.chars().next_back() {
-            (self.predicate)(c)
+    fn rcheck(&mut self, hay: Span<&str>) -> Option<usize> {
+        let (hay, range) = hay.into_parts();
+        let end = range.end;
+        if range.start == end {
+            return None;
+        }
+        let c = unsafe { hay.get_unchecked(..end) }.chars().next_back().unwrap();
+        if (self.predicate)(c) {
+            Some(end - c.len_utf8())
         } else {
-            false
+            None
         }
     }
 
     #[inline]
-    fn trim_end(&mut self, rest: &str) -> usize {
+    fn trim_end(&mut self, hay: &str) -> usize {
         // `find.map_or` is faster in trim_end in the microbenchmark, while
         // `find.unwrap_or` is faster in trim_start. Don't ask me why.
-        let mut chars = rest.chars();
+        let mut chars = hay.chars();
         let unconsume_amount = chars
             .by_ref()
             .rev() // btw, `rev().find()` is faster than `rfind()`
@@ -107,8 +115,8 @@ unsafe impl<F: FnMut(char) -> bool> ReverseChecker for MultiCharSearcher<F> {
     }
 }
 
-unsafe impl<F: FnMut(char) -> bool> DoubleEndedSearcher for MultiCharSearcher<F> {}
-unsafe impl<F: FnMut(char) -> bool> DoubleEndedChecker for MultiCharSearcher<F> {}
+unsafe impl<F: FnMut(char) -> bool> DoubleEndedSearcher<str> for MultiCharSearcher<F> {}
+unsafe impl<F: FnMut(char) -> bool> DoubleEndedChecker<str> for MultiCharSearcher<F> {}
 
 macro_rules! impl_pattern {
     ($ty:ty) => {
