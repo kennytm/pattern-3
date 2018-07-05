@@ -33,16 +33,9 @@ impl Hay for str {
     unsafe fn prev_index(&self, index: Self::Index) -> Self::Index {
         index - self.get_unchecked(..index).chars().next_back().unwrap().len_utf8()
     }
-
-    #[inline]
-    unsafe fn restore_range(&self, range: Range<usize>, subrange: Range<usize>) -> Range<usize> {
-        (subrange.start + range.start)..(subrange.end + range.start)
-    }
 }
 
 impl<'h> Haystack for &'h mut str {
-    type Hay = str;
-
     #[inline]
     fn empty() -> &'h mut str {
         Self::default()
@@ -58,6 +51,11 @@ impl<'h> Haystack for &'h mut str {
         let (haystack, right) = self.split_at_mut(range.end);
         let (left, middle) = haystack.split_at_mut(range.start);
         [left, middle, right]
+    }
+
+    #[inline]
+    fn restore_range(&self, range: Range<usize>, subrange: Range<usize>) -> Range<usize> {
+        (subrange.start + range.start)..(subrange.end + range.start)
     }
 }
 

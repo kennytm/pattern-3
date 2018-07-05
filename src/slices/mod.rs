@@ -33,16 +33,9 @@ impl<T> Hay for [T] {
     unsafe fn prev_index(&self, index: Self::Index) -> Self::Index {
         index - 1
     }
-
-    #[inline]
-    unsafe fn restore_range(&self, range: Range<usize>, subrange: Range<usize>) -> Range<usize> {
-        (subrange.start + range.start)..(subrange.end + range.start)
-    }
 }
 
 impl<'h, T: 'h> Haystack for &'h mut [T] {
-    type Hay = [T];
-
     #[inline]
     fn empty() -> Self {
         &mut []
@@ -59,12 +52,15 @@ impl<'h, T: 'h> Haystack for &'h mut [T] {
         let (left, middle) = haystack.split_at_mut(range.start);
         [left, middle, right]
     }
+
+    #[inline]
+    fn restore_range(&self, range: Range<usize>, subrange: Range<usize>) -> Range<usize> {
+        (subrange.start + range.start)..(subrange.end + range.start)
+    }
 }
 
 #[cfg(feature = "std")]
 impl<T> Haystack for Vec<T> {
-    type Hay = [T];
-
     #[inline]
     fn empty() -> Self {
         Vec::new()
@@ -82,6 +78,11 @@ impl<T> Haystack for Vec<T> {
         let right = self.split_off(range.end);
         let middle = self.split_off(range.start);
         [self, middle, right]
+    }
+
+    #[inline]
+    fn restore_range(&self, range: Range<usize>, subrange: Range<usize>) -> Range<usize> {
+        (subrange.start + range.start)..(subrange.end + range.start)
     }
 }
 

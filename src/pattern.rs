@@ -130,12 +130,14 @@ pub unsafe trait DoubleEndedSearcher<A: Hay + ?Sized>: ReverseSearcher<A> {}
 pub unsafe trait DoubleEndedChecker<A: Hay + ?Sized>: ReverseChecker<A> {}
 
 /// A pattern.
-pub trait Pattern<H: Haystack>: Sized {
+pub trait Pattern<H: Haystack>: Sized
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     /// The searcher associated with this pattern.
-    type Searcher: Searcher<H::Hay>;
+    type Searcher: Searcher<H::Target>;
 
     /// The checker associated with this pattern.
-    type Checker: Checker<H::Hay>;
+    type Checker: Checker<H::Target>;
 
     /// Produces a searcher for this pattern.
     fn into_searcher(self) -> Self::Searcher;

@@ -21,9 +21,8 @@
 //! codeword. These indices are invalid. A *valid index* of a certain haystack
 //! would only point to the boundaries.
 
-use std::ops::Range;
+use std::ops::{Deref, Range};
 use std::fmt::Debug;
-use std::borrow::Borrow;
 use std::mem;
 
 /// Borrowed [`Haystack`].
@@ -34,6 +33,12 @@ use std::mem;
 /// hay type `[T]`).
 pub trait Hay {
     /// The index type of the haystack. Typically a `usize`.
+    ///
+    /// Splitting a hay must be sublinear using this index type. For instance,
+    /// if we implement `Hay` for a linked list, the index should not be an
+    /// integer offset (`usize`) as this would require O(n) time to chase the
+    /// pointer and find the split point. Instead, for a linked list we should
+    /// directly use the node pointer as the index.
     type Index: Copy + Debug + Eq;
 
     /// Creates an empty haystack.
@@ -99,46 +104,6 @@ pub trait Hay {
     /// The two ends of the range must be valid indices. The start of the range
     /// must be before the end of the range (`range.start <= range.end`).
     unsafe fn slice_unchecked(&self, range: Range<Self::Index>) -> &Self;
-
-    /// Transforms the subrange from relative to self to the original haystack
-    /// it was sliced from.
-    ///
-    /// Typically this method can be simply implemented as
-    ///
-    /// ```text
-    /// (original_range.start + subrange.start)..(original_range.start + subrange.end)
-    /// ```
-    ///
-    /// # Safety
-    ///
-    /// The `original_range` must be the range used to obtain `self` from its
-    /// parent hay. The hay's length must be consistent with the distance in the
-    /// `original_range`.
-    ///
-    /// The `subrange` must be a valid range relative to `self`.
-    ///
-    /// # Examples
-    ///
-    /// This method should be implemented to satisfy the following condition:
-    ///
-    /// ```rust
-    /// use pattern_3::Hay;
-    ///
-    /// let original_hay = "012345";
-    /// let original_range = 1..4;
-    /// let subrange = 1..3;
-    ///
-    /// let hay = &original_hay[original_range.clone()];
-    /// assert_eq!(
-    ///     &hay[subrange.clone()],
-    ///     &original_hay[unsafe { hay.restore_range(original_range, subrange) }]
-    /// );
-    /// ```
-    unsafe fn restore_range(
-        &self,
-        original_range: Range<Self::Index>,
-        subrange: Range<Self::Index>,
-    ) -> Range<Self::Index>;
 }
 
 /// Linear splittable structure.
@@ -148,10 +113,7 @@ pub trait Hay {
 /// underlying representation call a [`Hay`]. Multiple haystacks may share the
 /// same hay type, and thus share the same implementation of pattern search
 /// algorithms.
-pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Sized {
-    /// The underlying hay of this haystack.
-    type Hay: Hay + ?Sized;
-
+pub trait Haystack: Deref + Sized where Self::Target: Hay {
     /// Creates an empty haystack.
     fn empty() -> Self;
 
@@ -187,7 +149,7 @@ pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Sized {
     /// assert_eq!(middle, &mut [2, 3, 4, 5]);
     /// assert_eq!(right, &mut [6]);
     /// ```
-    unsafe fn split_around(self, range: Range<<Self::Hay as Hay>::Index>) -> [Self; 3];
+    unsafe fn split_around(self, range: Range<<Self::Target as Hay>::Index>) -> [Self; 3];
 
     /// Subslices this haystack.
     ///
@@ -195,7 +157,55 @@ pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Sized {
     ///
     /// The starts and end indices of `range` must be valid indices for the
     /// haystack `self`.
-    unsafe fn slice_unchecked(self, range: Range<<Self::Hay as Hay>::Index>) -> Self;
+    unsafe fn slice_unchecked(self, range: Range<<Self::Target as Hay>::Index>) -> Self;
+
+    /// Transforms the range from relative to self's parent to the original
+    /// haystack it was sliced from.
+    ///
+    /// Typically this method can be simply implemented as
+    ///
+    /// ```text
+    /// (original.start + parent.start)..(original.start + parent.end)
+    /// ```
+    ///
+    /// If this haystack is a [`SharedHaystack`], this method would never be
+    /// called.
+    ///
+    /// # Safety
+    ///
+    /// The `parent` range should be a valid range relative to a hay *a*, which
+    /// was used to slice out *self*: `self == &a[parent]`.
+    ///
+    /// Similarly, the `original` range should be a valid range relative to
+    /// another hay *b* used to slice out *a*: `a == &b[original]`.
+    ///
+    /// The distance of `parent` must be consistent with the length of `self`.
+    ///
+    /// This method should return a range which satisfies:
+    ///
+    /// ```text
+    /// self == &b[parent][original] == &b[range]
+    /// ```
+    ///
+    /// Slicing can be destructive and *invalidates* some indices, in particular
+    /// for owned type with a pointer-like index, e.g. linked list. In this
+    /// case, one should derive an entirely new index range from `self`, e.g.
+    /// returning `self.start_index()..self.end_index()`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use pattern_3::Haystack;
+    ///
+    /// let hay = b"This is a sample haystack";
+    /// let this = hay[2..23][3..19].to_vec();
+    /// assert_eq!(&*this, &hay[this.restore_range(2..23, 3..19)]);
+    /// ```
+    fn restore_range(
+        &self,
+        original: Range<<Self::Target as Hay>::Index>,
+        parent: Range<<Self::Target as Hay>::Index>,
+    ) -> Range<<Self::Target as Hay>::Index>;
 }
 
 /// A haystack which can be shared and cheaply cloned (e.g. `&H`, `Rc<H>`).
@@ -204,7 +214,9 @@ pub trait Haystack: Borrow<<Self as Haystack>::Hay> + Sized {
 /// original haystack will be retained in full and cloned, rather than being
 /// sliced and splitted. Being a shared haystack allows searcher to see the
 /// entire haystack, including the consumed portion.
-pub trait SharedHaystack: Haystack + Clone {}
+pub trait SharedHaystack: Haystack + Clone
+where Self::Target: Hay // FIXME: RFC 2089 or 2289
+{}
 
 /// The borrowing behavior differs between a (unique) haystack and shared
 /// haystack. We use *specialization* to distinguish between these behavior:
@@ -217,28 +229,32 @@ pub trait SharedHaystack: Haystack + Clone {}
 ///     searchers.
 ///
 /// This trait will never be public.
-trait SpanBehavior: Haystack {
+trait SpanBehavior: Haystack
+where Self::Target: Hay // FIXME: RFC 2089 or 2289
+{
     fn take(&mut self) -> Self;
 
     fn from_span(span: Span<Self>) -> Self;
 
-    unsafe fn split_around_for_span(self, subrange: Range<<Self::Hay as Hay>::Index>) -> [Self; 3];
+    unsafe fn split_around_for_span(self, subrange: Range<<Self::Target as Hay>::Index>) -> [Self; 3];
 
-    unsafe fn slice_unchecked_for_span(self, subrange: Range<<Self::Hay as Hay>::Index>) -> Self;
+    unsafe fn slice_unchecked_for_span(self, subrange: Range<<Self::Target as Hay>::Index>) -> Self;
 
     fn borrow_range(
         &self,
-        range: Range<<Self::Hay as Hay>::Index>,
-    ) -> Range<<Self::Hay as Hay>::Index>;
+        range: Range<<Self::Target as Hay>::Index>,
+    ) -> Range<<Self::Target as Hay>::Index>;
 
-    unsafe fn restore_range(
+    fn do_restore_range(
         &self,
-        range: Range<<Self::Hay as Hay>::Index>,
-        subrange: Range<<Self::Hay as Hay>::Index>,
-    ) -> Range<<Self::Hay as Hay>::Index>;
+        range: Range<<Self::Target as Hay>::Index>,
+        subrange: Range<<Self::Target as Hay>::Index>,
+    ) -> Range<<Self::Target as Hay>::Index>;
 }
 
-impl<H: Haystack> SpanBehavior for H {
+impl<H: Haystack> SpanBehavior for H
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     #[inline]
     default fn take(&mut self) -> Self {
         mem::replace(self, Self::empty())
@@ -250,32 +266,33 @@ impl<H: Haystack> SpanBehavior for H {
     }
 
     #[inline]
-    default fn borrow_range(&self, _: Range<<Self::Hay as Hay>::Index>) -> Range<<Self::Hay as Hay>::Index> {
-        let hay = self.borrow();
-        hay.start_index()..hay.end_index()
+    default fn borrow_range(&self, _: Range<<Self::Target as Hay>::Index>) -> Range<<Self::Target as Hay>::Index> {
+        self.start_index()..self.end_index()
     }
 
     #[inline]
-    default unsafe fn restore_range(
+    default fn do_restore_range(
         &self,
-        range: Range<<Self::Hay as Hay>::Index>,
-        subrange: Range<<Self::Hay as Hay>::Index>,
-    ) -> Range<<Self::Hay as Hay>::Index> {
-        self.borrow().restore_range(range, subrange)
+        range: Range<<Self::Target as Hay>::Index>,
+        subrange: Range<<Self::Target as Hay>::Index>,
+    ) -> Range<<Self::Target as Hay>::Index> {
+        self.restore_range(range, subrange)
     }
 
     #[inline]
-    default unsafe fn split_around_for_span(self, subrange: Range<<Self::Hay as Hay>::Index>) -> [Self; 3] {
+    default unsafe fn split_around_for_span(self, subrange: Range<<Self::Target as Hay>::Index>) -> [Self; 3] {
         self.split_around(subrange)
     }
 
     #[inline]
-    default unsafe fn slice_unchecked_for_span(self, subrange: Range<<Self::Hay as Hay>::Index>) -> Self {
+    default unsafe fn slice_unchecked_for_span(self, subrange: Range<<Self::Target as Hay>::Index>) -> Self {
         self.slice_unchecked(subrange)
     }
 }
 
-impl<H: SharedHaystack> SpanBehavior for H {
+impl<H: SharedHaystack> SpanBehavior for H
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     #[inline]
     fn take(&mut self) -> Self {
         self.clone()
@@ -289,26 +306,26 @@ impl<H: SharedHaystack> SpanBehavior for H {
     }
 
     #[inline]
-    default fn borrow_range(&self, range: Range<<Self::Hay as Hay>::Index>) -> Range<<Self::Hay as Hay>::Index> {
+    fn borrow_range(&self, range: Range<<Self::Target as Hay>::Index>) -> Range<<Self::Target as Hay>::Index> {
         range
     }
 
     #[inline]
-    default unsafe fn restore_range(
+    fn do_restore_range(
         &self,
-        _: Range<<Self::Hay as Hay>::Index>,
-        subrange: Range<<Self::Hay as Hay>::Index>,
-    ) -> Range<<Self::Hay as Hay>::Index> {
+        _: Range<<Self::Target as Hay>::Index>,
+        subrange: Range<<Self::Target as Hay>::Index>,
+    ) -> Range<<Self::Target as Hay>::Index> {
         subrange
     }
 
     #[inline]
-    unsafe fn split_around_for_span(self, _: Range<<Self::Hay as Hay>::Index>) -> [Self; 3] {
+    unsafe fn split_around_for_span(self, _: Range<<Self::Target as Hay>::Index>) -> [Self; 3] {
         [self.clone(), self.clone(), self]
     }
 
     #[inline]
-    unsafe fn slice_unchecked_for_span(self, _: Range<<Self::Hay as Hay>::Index>) -> Self {
+    unsafe fn slice_unchecked_for_span(self, _: Range<<Self::Target as Hay>::Index>) -> Self {
         self
     }
 }
@@ -317,29 +334,32 @@ impl<H: SharedHaystack> SpanBehavior for H {
 
 /// A span is a haystack coupled with the original range where the haystack is found.
 #[derive(Debug, Clone)]
-pub struct Span<H: Haystack> {
+pub struct Span<H: Haystack>
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     haystack: H,
-    range: Range<<<H as Haystack>::Hay as Hay>::Index>,
-    //^ The `H as Haystack` is to trick `#[derive]` not to generate
+    range: Range<<<H as Deref>::Target as Hay>::Index>,
+    //^ The `<H as Trait>` is to trick `#[derive]` not to generate
     //  the where bound for `H::Hay`.
 }
 
 /// Creates a span which covers the entire haystack.
-impl<H: Haystack> From<H> for Span<H> {
+impl<H: Haystack> From<H> for Span<H>
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     #[inline]
     fn from(haystack: H) -> Self {
-        let range = {
-            let hay = haystack.borrow();
-            hay.start_index()..hay.end_index()
-        };
+        let range = haystack.start_index()..haystack.end_index();
         Self { haystack, range }
     }
 }
 
-impl<H: SharedHaystack> Span<H> {
+impl<H: SharedHaystack> Span<H>
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     /// Decomposes this span into the original haystack, and the range it focuses on.
     #[inline]
-    pub fn into_parts(self) -> (H, Range<<H::Hay as Hay>::Index>) {
+    pub fn into_parts(self) -> (H, Range<<H::Target as Hay>::Index>) {
         (self.haystack, self.range)
     }
 
@@ -349,7 +369,7 @@ impl<H: SharedHaystack> Span<H> {
     ///
     /// The `range` must be a valid range relative to `haystack`.
     #[inline]
-    pub unsafe fn from_parts(haystack: H, range: Range<<H::Hay as Hay>::Index>) -> Self {
+    pub unsafe fn from_parts(haystack: H, range: Range<<H::Target as Hay>::Index>) -> Self {
         Self { haystack, range }
     }
 }
@@ -365,18 +385,20 @@ impl<'h> Span<&'h str> {
     }
 }
 
-impl<H: Haystack> Span<H> {
+impl<H: Haystack> Span<H>
+where H::Target: Hay // FIXME: RFC 2089 or 2289
+{
     /// The range of the span, relative to the ultimate original haystack it was sliced from.
     #[inline]
-    pub fn original_range(&self) -> Range<<H::Hay as Hay>::Index> {
+    pub fn original_range(&self) -> Range<<H::Target as Hay>::Index> {
         self.range.clone()
     }
 
     /// Borrows a shared span.
     #[inline]
-    pub fn borrow(&self) -> Span<&H::Hay> {
+    pub fn borrow(&self) -> Span<&H::Target> {
         Span {
-            haystack: self.haystack.borrow(),
+            haystack: &*self.haystack,
             range: self.haystack.borrow_range(self.range.clone()),
         }
     }
@@ -421,13 +443,18 @@ impl<H: Haystack> Span<H> {
     /// # Some(()) })();
     /// ```
     #[inline]
-    pub unsafe fn split_around(self, subrange: Range<<H::Hay as Hay>::Index>) -> [Self; 3] {
-        let restored_subrange = self.haystack.restore_range(self.range.clone(), subrange.clone());
-        let [left, middle, right] = self.haystack.split_around_for_span(subrange);
+    pub unsafe fn split_around(self, subrange: Range<<H::Target as Hay>::Index>) -> [Self; 3] {
+        let self_range = self.haystack.borrow_range(self.range.clone());
+        let [left, middle, right] = self.haystack.split_around_for_span(subrange.clone());
+
+        let left_range = left.do_restore_range(self.range.clone(), self_range.start..subrange.start);
+        let right_range = right.do_restore_range(self.range.clone(), subrange.end..self_range.end);
+        let middle_range = middle.do_restore_range(self.range, subrange);
+
         [
-            Self { haystack: left, range: self.range.start..restored_subrange.start },
-            Self { haystack: middle, range: restored_subrange.clone() },
-            Self { haystack: right, range: restored_subrange.end..self.range.end },
+            Self { haystack: left, range: left_range },
+            Self { haystack: middle, range: middle_range },
+            Self { haystack: right, range: right_range },
         ]
     }
 
@@ -437,17 +464,14 @@ impl<H: Haystack> Span<H> {
     ///
     /// `subrange` must be a valid range relative to `self.borrow()`.
     #[inline]
-    pub unsafe fn slice_unchecked(self, subrange: Range<<H::Hay as Hay>::Index>) -> Self {
-        Self {
-            haystack: self.haystack.slice_unchecked_for_span(subrange.clone()),
-            range: subrange,
-        }
+    pub unsafe fn slice_unchecked(self, subrange: Range<<H::Target as Hay>::Index>) -> Self {
+        let haystack = self.haystack.slice_unchecked_for_span(subrange.clone());
+        let range = haystack.do_restore_range(self.range, subrange);
+        Self { haystack, range }
     }
 }
 
 impl<'a, A: Hay + ?Sized + 'a> Haystack for &'a A {
-    type Hay = A;
-
     #[inline]
     fn empty() -> Self {
         A::empty()
@@ -465,6 +489,11 @@ impl<'a, A: Hay + ?Sized + 'a> Haystack for &'a A {
     #[inline]
     unsafe fn slice_unchecked(self, range: Range<A::Index>) -> Self {
         A::slice_unchecked(self, range)
+    }
+
+    #[inline]
+    fn restore_range(&self, _: Range<A::Index>, _: Range<A::Index>) -> Range<A::Index> {
+        unreachable!()
     }
 }
 

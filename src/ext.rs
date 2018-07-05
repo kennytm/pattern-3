@@ -10,6 +10,7 @@ macro_rules! generate_clone_and_debug {
         where
             H: Haystack + Clone,
             S: Clone,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {
             fn clone(&self) -> Self {
                 $name { $field: self.$field.clone() }
@@ -23,6 +24,7 @@ macro_rules! generate_clone_and_debug {
         where
             H: Haystack + fmt::Debug,
             S: fmt::Debug,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
                 f.debug_tuple(stringify!($name))
@@ -60,6 +62,7 @@ macro_rules! generate_pattern_iterators {
         $(#[$common_stability_attribute])*
         pub struct $forward_iterator<H, S>($internal_iterator<H, S>)
         where
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
             H: Haystack;
 
         generate_clone_and_debug!($forward_iterator, 0);
@@ -68,7 +71,8 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> Iterator for $forward_iterator<H, S>
         where
             H: Haystack,
-            S: Searcher<H::Hay>,
+            S: Searcher<H::Target>,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {
             type Item = $iterty;
 
@@ -82,6 +86,7 @@ macro_rules! generate_pattern_iterators {
         $(#[$common_stability_attribute])*
         pub struct $reverse_iterator<H, S>($internal_iterator<H, S>)
         where
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
             H: Haystack;
 
         generate_clone_and_debug!($reverse_iterator, 0);
@@ -90,7 +95,8 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> Iterator for $reverse_iterator<H, S>
         where
             H: Haystack,
-            S: ReverseSearcher<H::Hay>,
+            S: ReverseSearcher<H::Target>,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {
             type Item = $iterty;
 
@@ -104,14 +110,16 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> FusedIterator for $forward_iterator<H, S>
         where
             H: Haystack,
-            S: Searcher<H::Hay>,
+            S: Searcher<H::Target>,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {}
 
         // #[stable(feature = "fused", since = "1.26.0")]
         impl<H, S> FusedIterator for $reverse_iterator<H, S>
         where
             H: Haystack,
-            S: ReverseSearcher<H::Hay>,
+            S: ReverseSearcher<H::Target>,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {}
 
         generate_pattern_iterators!($($t)* with $(#[$common_stability_attribute])*,
@@ -127,7 +135,8 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> DoubleEndedIterator for $forward_iterator<H, S>
         where
             H: Haystack,
-            S: DoubleEndedSearcher<H::Hay>,
+            S: DoubleEndedSearcher<H::Target>,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {
             #[inline]
             fn next_back(&mut self) -> Option<Self::Item> {
@@ -139,7 +148,8 @@ macro_rules! generate_pattern_iterators {
         impl<H, S> DoubleEndedIterator for $reverse_iterator<H, S>
         where
             H: Haystack,
-            S: DoubleEndedSearcher<H::Hay>,
+            S: DoubleEndedSearcher<H::Target>,
+            H::Target: Hay, // FIXME: RFC 2089 or 2289
         {
             #[inline]
             fn next_back(&mut self) -> Option<Self::Item> {
@@ -162,17 +172,19 @@ pub fn starts_with<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_checker().check(haystack.borrow().into()).is_some()
+    pattern.into_checker().check((*haystack).into()).is_some()
 }
 
 pub fn ends_with<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: ReverseChecker<H::Hay>,
+    P::Checker: ReverseChecker<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_checker().rcheck(haystack.borrow().into()).is_some()
+    pattern.into_checker().rcheck((*haystack).into()).is_some()
 }
 
 //------------------------------------------------------------------------------
@@ -183,9 +195,10 @@ pub fn trim_start<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let range = {
-        let hay = haystack.borrow();
+        let hay = &*haystack;
         let start = pattern.into_checker().trim_start(hay);
         let end = hay.end_index();
         start..end
@@ -197,10 +210,11 @@ pub fn trim_end<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: ReverseChecker<H::Hay>,
+    P::Checker: ReverseChecker<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let range = {
-        let hay = haystack.borrow();
+        let hay = &*haystack;
         let start = hay.start_index();
         let end = pattern.into_checker().trim_end(hay);
         start..end
@@ -212,11 +226,12 @@ pub fn trim<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: DoubleEndedChecker<H::Hay>,
+    P::Checker: DoubleEndedChecker<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let mut checker = pattern.into_checker();
     let range = {
-        let hay = haystack.borrow();
+        let hay = &*haystack;
         let end = checker.trim_end(hay);
         let hay = unsafe { Hay::slice_unchecked(hay, hay.start_index()..end) };
         let start = checker.trim_start(hay);
@@ -233,6 +248,7 @@ where
 struct MatchesInternal<H, S>
 where
     H: Haystack,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     searcher: S,
     rest: Span<H>,
@@ -241,7 +257,8 @@ where
 impl<H, S> MatchesInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<H::Hay>,
+    S: Searcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
     fn next_spanned(&mut self) -> Option<Span<H>> {
@@ -261,7 +278,8 @@ where
 impl<H, S> MatchesInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<H::Hay>,
+    S: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
     fn next_back_spanned(&mut self) -> Option<Span<H>> {
@@ -293,6 +311,7 @@ pub fn matches<H, P>(haystack: H, pattern: P) -> Matches<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     Matches(MatchesInternal {
         searcher: pattern.into_searcher(),
@@ -304,7 +323,8 @@ pub fn rmatches<H, P>(haystack: H, pattern: P) -> RMatches<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RMatches(MatchesInternal {
         searcher: pattern.into_searcher(),
@@ -316,9 +336,10 @@ pub fn contains<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     pattern.into_searcher()
-        .search(haystack.borrow().into())
+        .search((*haystack).into())
         .is_some()
 }
 
@@ -326,7 +347,11 @@ where
 // MatchIndices
 //------------------------------------------------------------------------------
 
-struct MatchIndicesInternal<H: Haystack, S> {
+struct MatchIndicesInternal<H, S>
+where
+    H: Haystack,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
+{
     inner: MatchesInternal<H, S>,
 }
 
@@ -335,10 +360,11 @@ generate_clone_and_debug!(MatchIndicesInternal, inner);
 impl<H, S> MatchIndicesInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<H::Hay>,
+    S: Searcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
-    fn next(&mut self) -> Option<(<H::Hay as Hay>::Index, H)> {
+    fn next(&mut self) -> Option<(<H::Target as Hay>::Index, H)> {
         let span = self.inner.next_spanned()?;
         let index = span.original_range().start;
         Some((index, Span::into(span)))
@@ -348,10 +374,11 @@ where
 impl<H, S> MatchIndicesInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<H::Hay>,
+    S: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
-    fn next_back(&mut self) -> Option<(<H::Hay as Hay>::Index, H)> {
+    fn next_back(&mut self) -> Option<(<H::Target as Hay>::Index, H)> {
         let span = self.inner.next_back_spanned()?;
         let index = span.original_range().start;
         Some((index, Span::into(span)))
@@ -365,7 +392,7 @@ generate_pattern_iterators! {
         struct RMatchIndices;
     stability:
     internal:
-        MatchIndicesInternal yielding ((<H::Hay as Hay>::Index, H));
+        MatchIndicesInternal yielding ((<H::Target as Hay>::Index, H));
     delegate double ended;
 }
 
@@ -373,6 +400,7 @@ pub fn match_indices<H, P>(haystack: H, pattern: P) -> MatchIndices<H, P::Search
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     MatchIndices(MatchIndicesInternal {
         inner: matches(haystack, pattern).0,
@@ -383,31 +411,34 @@ pub fn rmatch_indices<H, P>(haystack: H, pattern: P) -> RMatchIndices<H, P::Sear
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RMatchIndices(MatchIndicesInternal {
         inner: rmatches(haystack, pattern).0,
     })
 }
 
-pub fn find<H, P>(haystack: H, pattern: P) -> Option<<H::Hay as Hay>::Index>
+pub fn find<H, P>(haystack: H, pattern: P) -> Option<<H::Target as Hay>::Index>
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     pattern.into_searcher()
-        .search(haystack.borrow().into())
+        .search((*haystack).into())
         .map(|r| r.start)
 }
 
-pub fn rfind<H, P>(haystack: H, pattern: P) -> Option<<H::Hay as Hay>::Index>
+pub fn rfind<H, P>(haystack: H, pattern: P) -> Option<<H::Target as Hay>::Index>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     pattern.into_searcher()
-        .rsearch(haystack.borrow().into())
+        .rsearch((*haystack).into())
         .map(|r| r.start)
 }
 
@@ -418,6 +449,7 @@ where
 struct MatchRangesInternal<H, S>
 where
     H: Haystack,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     inner: MatchesInternal<H, S>,
 }
@@ -427,10 +459,11 @@ generate_clone_and_debug!(MatchRangesInternal, inner);
 impl<H, S> MatchRangesInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<H::Hay>,
+    S: Searcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
-    fn next(&mut self) -> Option<(Range<<H::Hay as Hay>::Index>, H)> {
+    fn next(&mut self) -> Option<(Range<<H::Target as Hay>::Index>, H)> {
         let span = self.inner.next_spanned()?;
         let range = span.original_range();
         Some((range, Span::into(span)))
@@ -440,10 +473,11 @@ where
 impl<H, S> MatchRangesInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<H::Hay>,
+    S: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
-    fn next_back(&mut self) -> Option<(Range<<H::Hay as Hay>::Index>, H)> {
+    fn next_back(&mut self) -> Option<(Range<<H::Target as Hay>::Index>, H)> {
         let span = self.inner.next_back_spanned()?;
         let range = span.original_range();
         Some((range, Span::into(span)))
@@ -457,7 +491,7 @@ generate_pattern_iterators! {
         struct RMatchRanges;
     stability:
     internal:
-        MatchRangesInternal yielding ((Range<<H::Hay as Hay>::Index>, H));
+        MatchRangesInternal yielding ((Range<<H::Target as Hay>::Index>, H));
     delegate double ended;
 }
 
@@ -465,6 +499,7 @@ pub fn match_ranges<H, P>(haystack: H, pattern: P) -> MatchRanges<H, P::Searcher
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     MatchRanges(MatchRangesInternal {
         inner: matches(haystack, pattern).0,
@@ -475,30 +510,33 @@ pub fn rmatch_ranges<H, P>(haystack: H, pattern: P) -> RMatchRanges<H, P::Search
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RMatchRanges(MatchRangesInternal {
         inner: rmatches(haystack, pattern).0,
     })
 }
 
-pub fn find_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Hay as Hay>::Index>>
+pub fn find_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Target as Hay>::Index>>
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     pattern.into_searcher()
-        .search(haystack.borrow().into())
+        .search((*haystack).into())
 }
 
-pub fn rfind_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Hay as Hay>::Index>>
+pub fn rfind_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Target as Hay>::Index>>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     pattern.into_searcher()
-        .rsearch(haystack.borrow().into())
+        .rsearch((*haystack).into())
 }
 
 //------------------------------------------------------------------------------
@@ -509,6 +547,7 @@ where
 struct SplitInternal<H, S>
 where
     H: Haystack,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     searcher: S,
     rest: Span<H>,
@@ -519,7 +558,8 @@ where
 impl<H, S> SplitInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<H::Hay>,
+    S: Searcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
     fn next(&mut self) -> Option<H> {
@@ -548,7 +588,8 @@ where
 impl<H, S> SplitInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<H::Hay>,
+    S: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
     fn next_back(&mut self) -> Option<H> {
@@ -606,6 +647,7 @@ pub fn split<H, P>(haystack: H, pattern: P) -> Split<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     Split(SplitInternal {
         searcher: pattern.into_searcher(),
@@ -619,7 +661,8 @@ pub fn rsplit<H, P>(haystack: H, pattern: P) -> RSplit<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RSplit(SplitInternal {
         searcher: pattern.into_searcher(),
@@ -633,6 +676,7 @@ pub fn split_terminator<H, P>(haystack: H, pattern: P) -> SplitTerminator<H, P::
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     SplitTerminator(SplitInternal {
         searcher: pattern.into_searcher(),
@@ -646,7 +690,8 @@ pub fn rsplit_terminator<H, P>(haystack: H, pattern: P) -> RSplitTerminator<H, P
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RSplitTerminator(SplitInternal {
         searcher: pattern.into_searcher(),
@@ -664,6 +709,7 @@ where
 struct SplitNInternal<H, S>
 where
     H: Haystack,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     searcher: S,
     rest: Span<H>,
@@ -673,7 +719,8 @@ where
 impl<H, S> SplitNInternal<H, S>
 where
     H: Haystack,
-    S: Searcher<H::Hay>,
+    S: Searcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
     fn next(&mut self) -> Option<H> {
@@ -706,7 +753,8 @@ where
 impl<H, S> SplitNInternal<H, S>
 where
     H: Haystack,
-    S: ReverseSearcher<H::Hay>,
+    S: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     #[inline]
     fn next_back(&mut self) -> Option<H> {
@@ -751,6 +799,7 @@ pub fn splitn<H, P>(haystack: H, n: usize, pattern: P) -> SplitN<H, P::Searcher>
 where
     H: Haystack,
     P: Pattern<H>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     SplitN(SplitNInternal {
         searcher: pattern.into_searcher(),
@@ -763,7 +812,8 @@ pub fn rsplitn<H, P>(haystack: H, n: usize, pattern: P) -> RSplitN<H, P::Searche
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Searcher: ReverseSearcher<H::Hay>,
+    P::Searcher: ReverseSearcher<H::Target>,
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RSplitN(SplitNInternal {
         searcher: pattern.into_searcher(),
@@ -782,6 +832,7 @@ where
     P: Pattern<H>,
     F: FnMut(H) -> H,
     W: FnMut(H),
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let mut searcher = from.into_searcher();
     let mut src = Span::from(src);
@@ -800,6 +851,7 @@ where
     P: Pattern<H>,
     F: FnMut(H) -> H,
     W: FnMut(H),
+    H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let mut searcher = from.into_searcher();
     let mut src = Span::from(src);
