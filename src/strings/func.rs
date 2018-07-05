@@ -45,9 +45,9 @@ unsafe impl<F: FnMut(char) -> bool> Searcher<str> for MultiCharSearcher<F> {
     }
 }
 
-unsafe impl<F: FnMut(char) -> bool> Checker<str> for MultiCharSearcher<F> {
+unsafe impl<F: FnMut(char) -> bool> Consumer<str> for MultiCharSearcher<F> {
     #[inline]
-    fn check(&mut self, hay: Span<&str>) -> Option<usize> {
+    fn consume(&mut self, hay: Span<&str>) -> Option<usize> {
         let (hay, range) = hay.into_parts();
         let start = range.start;
         if start == range.end {
@@ -85,9 +85,9 @@ unsafe impl<F: FnMut(char) -> bool> ReverseSearcher<str> for MultiCharSearcher<F
     }
 }
 
-unsafe impl<F: FnMut(char) -> bool> ReverseChecker<str> for MultiCharSearcher<F> {
+unsafe impl<F: FnMut(char) -> bool> ReverseConsumer<str> for MultiCharSearcher<F> {
     #[inline]
-    fn rcheck(&mut self, hay: Span<&str>) -> Option<usize> {
+    fn rconsume(&mut self, hay: Span<&str>) -> Option<usize> {
         let (hay, range) = hay.into_parts();
         let end = range.end;
         if range.start == end {
@@ -116,13 +116,13 @@ unsafe impl<F: FnMut(char) -> bool> ReverseChecker<str> for MultiCharSearcher<F>
 }
 
 unsafe impl<F: FnMut(char) -> bool> DoubleEndedSearcher<str> for MultiCharSearcher<F> {}
-unsafe impl<F: FnMut(char) -> bool> DoubleEndedChecker<str> for MultiCharSearcher<F> {}
+unsafe impl<F: FnMut(char) -> bool> DoubleEndedConsumer<str> for MultiCharSearcher<F> {}
 
 macro_rules! impl_pattern {
     ($ty:ty) => {
         impl<'h, F: FnMut(char) -> bool> Pattern<$ty> for F {
             type Searcher = MultiCharSearcher<F>;
-            type Checker = MultiCharSearcher<F>;
+            type Consumer = MultiCharSearcher<F>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
@@ -130,14 +130,14 @@ macro_rules! impl_pattern {
             }
 
             #[inline]
-            fn into_checker(self) -> Self::Checker {
+            fn into_consumer(self) -> Self::Consumer {
                 MultiCharSearcher { predicate: self }
             }
         }
 
         impl<'h, 'p> Pattern<$ty> for &'p [char] {
             type Searcher = MultiCharSearcher<MultiCharEq<'p>>;
-            type Checker = MultiCharSearcher<MultiCharEq<'p>>;
+            type Consumer = MultiCharSearcher<MultiCharEq<'p>>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
@@ -145,7 +145,7 @@ macro_rules! impl_pattern {
             }
 
             #[inline]
-            fn into_checker(self) -> Self::Checker {
+            fn into_consumer(self) -> Self::Consumer {
                 MultiCharSearcher { predicate: MultiCharEq(self) }
             }
         }

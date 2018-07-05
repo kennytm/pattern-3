@@ -56,9 +56,9 @@ unsafe impl Searcher<str> for CharSearcher {
     }
 }
 
-unsafe impl Checker<str> for CharChecker {
+unsafe impl Consumer<str> for CharChecker {
     #[inline]
-    fn check(&mut self, span: Span<&str>) -> Option<usize> {
+    fn consume(&mut self, span: Span<&str>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let mut utf8_encoded = [0u8; 4];
         let encoded = self.0.encode_utf8(&mut utf8_encoded);
@@ -75,7 +75,7 @@ unsafe impl Checker<str> for CharChecker {
 
     #[inline]
     fn trim_start(&mut self, hay: &str) -> usize {
-        let mut checker = Pattern::<&str>::into_checker(|c: char| c == self.0);
+        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.0);
         checker.trim_start(hay)
     }
 }
@@ -100,9 +100,9 @@ unsafe impl ReverseSearcher<str> for CharSearcher {
     }
 }
 
-unsafe impl ReverseChecker<str> for CharChecker {
+unsafe impl ReverseConsumer<str> for CharChecker {
     #[inline]
-    fn rcheck(&mut self, span: Span<&str>) -> Option<usize> {
+    fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
         // let (hay, range) = span.into_parts();
         // let mut utf8_encoded = [0u8; 4];
         // let encoded_len = self.0.encode_utf8(&mut utf8_encoded).len();
@@ -128,19 +128,19 @@ unsafe impl ReverseChecker<str> for CharChecker {
 
     #[inline]
     fn trim_end(&mut self, haystack: &str) -> usize {
-        let mut checker = Pattern::<&str>::into_checker(|c: char| c == self.0);
+        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.0);
         checker.trim_end(haystack)
     }
 }
 
 unsafe impl DoubleEndedSearcher<str> for CharSearcher {}
-unsafe impl DoubleEndedChecker<str> for CharChecker {}
+unsafe impl DoubleEndedConsumer<str> for CharChecker {}
 
 macro_rules! impl_pattern {
     ($ty:ty) => {
         impl<'h> Pattern<$ty> for char {
             type Searcher = CharSearcher;
-            type Checker = CharChecker;
+            type Consumer = CharChecker;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
@@ -148,7 +148,7 @@ macro_rules! impl_pattern {
             }
 
             #[inline]
-            fn into_checker(self) -> Self::Checker {
+            fn into_consumer(self) -> Self::Consumer {
                 CharChecker(self)
             }
         }

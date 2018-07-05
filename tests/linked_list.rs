@@ -499,11 +499,11 @@ where
     T: PartialEq + 'p,
 {}
 
-unsafe impl<'p, T> Checker<Slice<T>> for ElemSearcher<'p, T>
+unsafe impl<'p, T> Consumer<Slice<T>> for ElemSearcher<'p, T>
 where
     T: PartialEq + 'p,
 {
-    fn check(&mut self, span: Span<&Slice<T>>) -> Option<Cursor<T>> {
+    fn consume(&mut self, span: Span<&Slice<T>>) -> Option<Cursor<T>> {
         let range = span.into_parts().1;
         if range.start == range.end {
             return None;
@@ -516,11 +516,11 @@ where
     }
 }
 
-unsafe impl<'p, T> ReverseChecker<Slice<T>> for ElemSearcher<'p, T>
+unsafe impl<'p, T> ReverseConsumer<Slice<T>> for ElemSearcher<'p, T>
 where
     T: PartialEq + 'p,
 {
-    fn rcheck(&mut self, span: Span<&Slice<T>>) -> Option<Cursor<T>> {
+    fn rconsume(&mut self, span: Span<&Slice<T>>) -> Option<Cursor<T>> {
         let range = span.into_parts().1;
         if range.start == range.end {
             return None;
@@ -534,7 +534,7 @@ where
     }
 }
 
-unsafe impl<'p, T> DoubleEndedChecker<Slice<T>> for ElemSearcher<'p, T>
+unsafe impl<'p, T> DoubleEndedConsumer<Slice<T>> for ElemSearcher<'p, T>
 where
     T: PartialEq + 'p,
 {}
@@ -544,10 +544,10 @@ where
     T: PartialEq + 'p
 {
     type Searcher = ElemSearcher<'p, T>;
-    type Checker = ElemSearcher<'p, T>;
+    type Consumer = ElemSearcher<'p, T>;
 
     fn into_searcher(self) -> Self::Searcher { self }
-    fn into_checker(self) -> Self::Checker { self }
+    fn into_consumer(self) -> Self::Consumer { self }
 }
 
 impl<'h, 'p, T> Pattern<DList<T>> for ElemSearcher<'p, T>
@@ -555,10 +555,10 @@ where
     T: PartialEq + 'p
 {
     type Searcher = ElemSearcher<'p, T>;
-    type Checker = ElemSearcher<'p, T>;
+    type Consumer = ElemSearcher<'p, T>;
 
     fn into_searcher(self) -> Self::Searcher { self }
-    fn into_checker(self) -> Self::Checker { self }
+    fn into_consumer(self) -> Self::Consumer { self }
 }
 
 //------------------------------------------------------------------------------
@@ -568,10 +568,10 @@ struct EmptyPattern;
 
 impl<'h, T> Pattern<DList<T>> for EmptyPattern {
     type Searcher = pattern::EmptySearcher;
-    type Checker = pattern::EmptySearcher;
+    type Consumer = pattern::EmptySearcher;
 
     fn into_searcher(self) -> Self::Searcher { Self::Searcher::default() }
-    fn into_checker(self) -> Self::Checker { Self::Checker::default() }
+    fn into_consumer(self) -> Self::Consumer { Self::Consumer::default() }
 }
 
 //------------------------------------------------------------------------------

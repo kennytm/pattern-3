@@ -562,8 +562,8 @@ fn test_trim_strings() {
 fn str_replacen<'a, P>(src: &'a str, from: P, to: &'a str, n: usize) -> String
 where
     P: Pattern<&'a str>,
-    P::Searcher: Searcher<str>,
-    P::Checker: Checker<str>,
+    P::Searcher: Searcher<str>, // FIXME: RFC 2089
+    P::Consumer: Consumer<str>,
 {
     let mut res = String::with_capacity(src.len());
     replacen_with(src, from, |_| to, n, |h| res.push_str(h));
@@ -573,8 +573,8 @@ where
 fn str_replace<'a, P>(src: &'a str, from: P, to: &'a str) -> String
 where
     P: Pattern<&'a str>,
-    P::Searcher: Searcher<str>,
-    P::Checker: Checker<str>,
+    P::Searcher: Searcher<str>, // FIXME: RFC 2089
+    P::Consumer: Consumer<str>,
 {
     let mut res = String::with_capacity(src.len());
     replace_with(src, from, |_| to, |h| res.push_str(h));

@@ -1,5 +1,5 @@
 use haystack::{Hay, Haystack, Span};
-use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Checker, ReverseChecker, DoubleEndedChecker};
+use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
 use std::iter::FusedIterator;
 use std::ops::Range;
 use std::fmt;
@@ -174,17 +174,17 @@ where
     P: Pattern<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_checker().check((*haystack).into()).is_some()
+    pattern.into_consumer().consume((*haystack).into()).is_some()
 }
 
 pub fn ends_with<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: ReverseChecker<H::Target>,
+    P::Consumer: ReverseConsumer<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_checker().rcheck((*haystack).into()).is_some()
+    pattern.into_consumer().rconsume((*haystack).into()).is_some()
 }
 
 //------------------------------------------------------------------------------
@@ -199,7 +199,7 @@ where
 {
     let range = {
         let hay = &*haystack;
-        let start = pattern.into_checker().trim_start(hay);
+        let start = pattern.into_consumer().trim_start(hay);
         let end = hay.end_index();
         start..end
     };
@@ -210,13 +210,13 @@ pub fn trim_end<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: ReverseChecker<H::Target>,
+    P::Consumer: ReverseConsumer<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let range = {
         let hay = &*haystack;
         let start = hay.start_index();
-        let end = pattern.into_checker().trim_end(hay);
+        let end = pattern.into_consumer().trim_end(hay);
         start..end
     };
     unsafe { haystack.slice_unchecked(range) }
@@ -226,10 +226,10 @@ pub fn trim<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Checker: DoubleEndedChecker<H::Target>,
+    P::Consumer: DoubleEndedConsumer<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    let mut checker = pattern.into_checker();
+    let mut checker = pattern.into_consumer();
     let range = {
         let hay = &*haystack;
         let end = checker.trim_end(hay);

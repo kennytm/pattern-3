@@ -32,5 +32,5 @@ mod omgwtf8;
 pub mod ext;
 
 pub use haystack::{Hay, Haystack, Span};
-pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Checker, ReverseChecker, DoubleEndedChecker};
+pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
 pub use omgwtf8::Wtf8;

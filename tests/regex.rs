@@ -36,8 +36,8 @@ unsafe impl<'p> Searcher<str> for RegexSearcher<'p> {
     }
 }
 
-unsafe impl<'p> Checker<str> for RegexSearcher<'p> {
-    fn check(&mut self, span: Span<&str>) -> Option<usize> {
+unsafe impl<'p> Consumer<str> for RegexSearcher<'p> {
+    fn consume(&mut self, span: Span<&str>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let m = self.regex.find_at(hay, range.start)?;
         if m.start() == range.start {
@@ -50,7 +50,7 @@ unsafe impl<'p> Checker<str> for RegexSearcher<'p> {
 
 impl<'h, 'p> Pattern<&'h str> for &'p RegexWrapper {
     type Searcher = RegexSearcher<'p>;
-    type Checker = RegexSearcher<'p>;
+    type Consumer = RegexSearcher<'p>;
 
     fn into_searcher(self) -> RegexSearcher<'p> {
         RegexSearcher {
@@ -59,7 +59,7 @@ impl<'h, 'p> Pattern<&'h str> for &'p RegexWrapper {
         }
     }
 
-    fn into_checker(self) -> RegexSearcher<'p> {
+    fn into_consumer(self) -> RegexSearcher<'p> {
         self.into_searcher()
     }
 }

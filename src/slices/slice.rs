@@ -433,12 +433,12 @@ where
 #[derive(Debug)]
 pub struct SliceChecker<'p, T: 'p>(pub(crate) &'p [T]);
 
-unsafe impl<'p, T> Checker<[T]> for SliceChecker<'p, T>
+unsafe impl<'p, T> Consumer<[T]> for SliceChecker<'p, T>
 where
     T: PartialEq + 'p,
 {
     #[inline]
-    fn check(&mut self, span: Span<&[T]>) -> Option<usize> {
+    fn consume(&mut self, span: Span<&[T]>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let check_end = range.start + self.0.len();
         if range.end < check_end {
@@ -452,12 +452,12 @@ where
     }
 }
 
-unsafe impl<'p, T> ReverseChecker<[T]> for SliceChecker<'p, T>
+unsafe impl<'p, T> ReverseConsumer<[T]> for SliceChecker<'p, T>
 where
     T: PartialEq + 'p,
 {
     #[inline]
-    fn rcheck(&mut self, span: Span<&[T]>) -> Option<usize> {
+    fn rconsume(&mut self, span: Span<&[T]>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         if range.start + self.0.len() > range.end {
             return None;
@@ -532,7 +532,7 @@ macro_rules! impl_pattern {
             T: PartialEq + 'p,
         {
             type Searcher = SliceSearcher<'p, T>;
-            type Checker = SliceChecker<'p, T>;
+            type Consumer = SliceChecker<'p, T>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
@@ -540,7 +540,7 @@ macro_rules! impl_pattern {
             }
 
             #[inline]
-            fn into_checker(self) -> Self::Checker {
+            fn into_consumer(self) -> Self::Consumer {
                 SliceChecker(self)
             }
         }

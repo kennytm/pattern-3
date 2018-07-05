@@ -117,14 +117,14 @@ fn decode_surrogate_pair(high: HighSurrogate, low: LowSurrogate) -> [u8; 4] {
 
 #[test]
 fn test_decode_surrogate_pair() {
-    fn check(hi: u16, lo: u16, utf8: [u8; 4]) {
+    fn consume(hi: u16, lo: u16, utf8: [u8; 4]) {
         let high = HighSurrogate(NonZeroU16::new(hi).unwrap());
         let low = LowSurrogate(NonZeroU16::new(lo).unwrap());
         assert_eq!(decode_surrogate_pair(high, low), utf8);
     }
-    check(0xa080, 0xb080, [0xf0, 0x90, 0x80, 0x80]);
-    check(0xa0bd, 0xb88d, [0xf0, 0x9f, 0x98, 0x8d]);
-    check(0xafbf, 0xbfbf, [0xf4, 0x8f, 0xbf, 0xbf]);
+    consume(0xa080, 0xb080, [0xf0, 0x90, 0x80, 0x80]);
+    consume(0xa0bd, 0xb88d, [0xf0, 0x9f, 0x98, 0x8d]);
+    consume(0xafbf, 0xbfbf, [0xf4, 0x8f, 0xbf, 0xbf]);
 }
 
 
@@ -875,31 +875,31 @@ mod tests {
     fn omgwtf8_classify_index() {
         use super::IndexType::*;
 
-        fn check(input: &Wtf8, expected: &[IndexType]) {
+        fn consume(input: &Wtf8, expected: &[IndexType]) {
             let actual = (0..expected.len()).map(|i| classify_index(input, i)).collect::<Vec<_>>();
             assert_eq!(&*actual, expected);
         }
-        check(
+        consume(
             Wtf8::from_str(""),
             &[CharBoundary, OutOfBounds, OutOfBounds],
         );
-        check(
+        consume(
             Wtf8::from_str("aa"),
             &[CharBoundary, CharBoundary, CharBoundary, OutOfBounds],
         );
-        check(
+        consume(
             Wtf8::from_str("á"),
             &[CharBoundary, Interior, CharBoundary, OutOfBounds],
         );
-        check(
+        consume(
             Wtf8::from_str("\u{3000}"),
             &[CharBoundary, Interior, Interior, CharBoundary, OutOfBounds],
         );
-        check(
+        consume(
             Wtf8::from_str("\u{30000}"),
             &[CharBoundary, FourByteSeq1, FourByteSeq2, FourByteSeq3, CharBoundary, OutOfBounds],
         );
-        check(
+        consume(
             unsafe { Wtf8::from_bytes_unchecked(b"\xed\xbf\xbf\xed\xa0\x80") },
             &[
                 CharBoundary, Interior, Interior,
@@ -907,7 +907,7 @@ mod tests {
                 CharBoundary, OutOfBounds,
             ],
         );
-        check(
+        consume(
             unsafe { Wtf8::from_bytes_unchecked(b"\x90\x80\x80\xf0\x90\x80\x80\xf0\x90\x80") },
             &[
                 CharBoundary, Interior, Interior,

@@ -35,11 +35,11 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
 /// # Safety
 ///
 /// This trait is marked unsafe because the indices returned by
-/// [`.check()`](Checker::check) and [`.trim_start()`](Checker::trim_start)
+/// [`.consume()`](Consumer::check) and [`.trim_start()`](Consumer::trim_start)
 /// methods are required to lie on valid codeward boundaries in the haystack.
 /// This enables consumers of this trait to slice the haystack without
 /// additional runtime checks.
-pub unsafe trait Checker<A: Hay + ?Sized> {
+pub unsafe trait Consumer<A: Hay + ?Sized> {
     /// Checks if the pattern can be found at the beginning of the span.
     ///
     /// The hay and the restricted range for searching can be recovered by
@@ -49,18 +49,18 @@ pub unsafe trait Checker<A: Hay + ?Sized> {
     ///
     /// If the pattern cannot be found at the beginning of the span, this method
     /// should return `None`.
-    fn check(&mut self, span: Span<&A>) -> Option<A::Index>;
+    fn consume(&mut self, span: Span<&A>) -> Option<A::Index>;
 
     /// Repeatedly removes prefixes of the hay which matches the pattern.
     ///
-    /// A fast generic implementation in terms of [`.check()`] is provided by
+    /// A fast generic implementation in terms of [`.consume()`] is provided by
     /// default. Nevertheless, many patterns allow a higher-performance
     /// specialization.
     #[inline]
     fn trim_start(&mut self, hay: &A) -> A::Index {
         let mut offset = hay.start_index();
         let mut span = Span::from(hay);
-        while let Some(pos) = self.check(span.clone()) {
+        while let Some(pos) = self.consume(span.clone()) {
             offset = pos;
             let (hay, range) = span.into_parts();
             if pos == range.start {
@@ -92,7 +92,7 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
 ///
 /// This trait provides methods for checking if a pattern matches the end of a
 /// hay.
-pub unsafe trait ReverseChecker<A: Hay + ?Sized>: Checker<A> {
+pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
     /// Checks if the pattern can be found at the end of the span.
     ///
     /// The hay and the restricted range for searching can be recovered by
@@ -102,18 +102,18 @@ pub unsafe trait ReverseChecker<A: Hay + ?Sized>: Checker<A> {
     ///
     /// If the pattern cannot be found at the end of the span, this method
     /// should return `None`.
-    fn rcheck(&mut self, hay: Span<&A>) -> Option<A::Index>;
+    fn rconsume(&mut self, hay: Span<&A>) -> Option<A::Index>;
 
     /// Repeatedly removes suffixes of the hay which matches the pattern.
     ///
-    /// A fast generic implementation in terms of [`.rcheck()`] is provided by
+    /// A fast generic implementation in terms of [`.rconsume()`] is provided by
     /// default. Nevertheless, many patterns allow a higher-performance
     /// specialization.
     #[inline]
     fn trim_end(&mut self, hay: &A) -> A::Index {
         let mut offset = hay.end_index();
         let mut span = Span::from(hay);
-        while let Some(pos) = self.rcheck(span.clone()) {
+        while let Some(pos) = self.rconsume(span.clone()) {
             offset = pos;
             let (hay, range) = span.into_parts();
             if pos == range.end {
@@ -127,7 +127,7 @@ pub unsafe trait ReverseChecker<A: Hay + ?Sized>: Checker<A> {
 
 pub unsafe trait DoubleEndedSearcher<A: Hay + ?Sized>: ReverseSearcher<A> {}
 
-pub unsafe trait DoubleEndedChecker<A: Hay + ?Sized>: ReverseChecker<A> {}
+pub unsafe trait DoubleEndedConsumer<A: Hay + ?Sized>: ReverseConsumer<A> {}
 
 /// A pattern.
 pub trait Pattern<H: Haystack>: Sized
@@ -137,13 +137,13 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
     type Searcher: Searcher<H::Target>;
 
     /// The checker associated with this pattern.
-    type Checker: Checker<H::Target>;
+    type Consumer: Consumer<H::Target>;
 
     /// Produces a searcher for this pattern.
     fn into_searcher(self) -> Self::Searcher;
 
     /// Produces a checker for this pattern.
-    fn into_checker(self) -> Self::Checker;
+    fn into_consumer(self) -> Self::Consumer;
 }
 
 
@@ -173,9 +173,9 @@ unsafe impl<A: Hay + ?Sized> Searcher<A> for EmptySearcher {
     }
 }
 
-unsafe impl<A: Hay + ?Sized> Checker<A> for EmptySearcher {
+unsafe impl<A: Hay + ?Sized> Consumer<A> for EmptySearcher {
     #[inline]
-    fn check(&mut self, span: Span<&A>) -> Option<A::Index> {
+    fn consume(&mut self, span: Span<&A>) -> Option<A::Index> {
         let (_, range) = span.into_parts();
         Some(range.start)
     }
@@ -202,9 +202,9 @@ unsafe impl<A: Hay + ?Sized> ReverseSearcher<A> for EmptySearcher {
     }
 }
 
-unsafe impl<A: Hay + ?Sized> ReverseChecker<A> for EmptySearcher {
+unsafe impl<A: Hay + ?Sized> ReverseConsumer<A> for EmptySearcher {
     #[inline]
-    fn rcheck(&mut self, span: Span<&A>) -> Option<A::Index> {
+    fn rconsume(&mut self, span: Span<&A>) -> Option<A::Index> {
         let (_, range) = span.into_parts();
         Some(range.end)
     }
@@ -216,4 +216,4 @@ unsafe impl<A: Hay + ?Sized> ReverseChecker<A> for EmptySearcher {
 }
 
 unsafe impl<A: Hay + ?Sized> DoubleEndedSearcher<A> for EmptySearcher {}
-unsafe impl<A: Hay + ?Sized> DoubleEndedChecker<A> for EmptySearcher {}
+unsafe impl<A: Hay + ?Sized> DoubleEndedConsumer<A> for EmptySearcher {}

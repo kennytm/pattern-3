@@ -31,10 +31,10 @@ fn span_as_inner(span: Span<&Wtf8>) -> Span<&[u8]> {
     unsafe { Span::from_parts(hay.as_inner(), range) }
 }
 
-unsafe impl<'p> Checker<Wtf8> for SliceChecker<'p, u8> {
+unsafe impl<'p> Consumer<Wtf8> for SliceChecker<'p, u8> {
     #[inline]
-    fn check(&mut self, span: Span<&Wtf8>) -> Option<usize> {
-        self.check(span_as_inner(span))
+    fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
+        self.consume(span_as_inner(span))
     }
     #[inline]
     fn trim_start(&mut self, haystack: &Wtf8) -> usize {
@@ -42,10 +42,10 @@ unsafe impl<'p> Checker<Wtf8> for SliceChecker<'p, u8> {
     }
 }
 
-unsafe impl<'p> ReverseChecker<Wtf8> for SliceChecker<'p, u8> {
+unsafe impl<'p> ReverseConsumer<Wtf8> for SliceChecker<'p, u8> {
     #[inline]
-    fn rcheck(&mut self, span: Span<&Wtf8>) -> Option<usize> {
-        self.rcheck(span_as_inner(span))
+    fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
+        self.rconsume(span_as_inner(span))
     }
     #[inline]
     fn trim_end(&mut self, haystack: &Wtf8) -> usize {
@@ -293,9 +293,9 @@ pub struct Wtf8Checker<'p> {
     high: Option<HighSurrogateSearcher>,
 }
 
-unsafe impl<'p> Checker<Wtf8> for Wtf8Checker<'p> {
+unsafe impl<'p> Consumer<Wtf8> for Wtf8Checker<'p> {
     #[inline]
-    fn check(&mut self, span: Span<&Wtf8>) -> Option<usize> {
+    fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let bytes = hay[range.clone()].as_inner();
         let low_len = if self.low.is_some() { 3 } else { 0 };
@@ -327,9 +327,9 @@ unsafe impl<'p> Checker<Wtf8> for Wtf8Checker<'p> {
     }
 }
 
-unsafe impl<'p> ReverseChecker<Wtf8> for Wtf8Checker<'p> {
+unsafe impl<'p> ReverseConsumer<Wtf8> for Wtf8Checker<'p> {
     #[inline]
-    fn rcheck(&mut self, span: Span<&Wtf8>) -> Option<usize> {
+    fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let bytes = hay[range.clone()].as_inner();
         let low_len = if self.low.is_some() { 3 } else { 0 };
@@ -364,7 +364,7 @@ unsafe impl<'p> ReverseChecker<Wtf8> for Wtf8Checker<'p> {
 
 impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
     type Searcher = Wtf8Searcher<'p>;
-    type Checker = Wtf8Checker<'p>;
+    type Consumer = Wtf8Checker<'p>;
 
     fn into_searcher(self) -> Self::Searcher {
         let (low, middle, high) = self.canonicalize();
@@ -375,7 +375,7 @@ impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
         }
     }
 
-    fn into_checker(self) -> Self::Checker {
+    fn into_consumer(self) -> Self::Consumer {
         let (low, middle, high) = self.canonicalize();
         Wtf8Checker {
             low: low.map(LowSurrogateSearcher::new),
@@ -387,13 +387,13 @@ impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
 
 impl<'h, 'p> Pattern<&'h Wtf8> for &'p str {
     type Searcher = SliceSearcher<'p, u8>;
-    type Checker = SliceChecker<'p, u8>;
+    type Consumer = SliceChecker<'p, u8>;
 
     fn into_searcher(self) -> Self::Searcher {
         SliceSearcher::new(self.as_bytes())
     }
 
-    fn into_checker(self) -> Self::Checker {
+    fn into_consumer(self) -> Self::Consumer {
         SliceChecker(self.as_bytes())
     }
 }

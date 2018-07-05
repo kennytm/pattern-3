@@ -13,7 +13,7 @@ macro_rules! impl_pattern {
             F: FnMut(&T) -> bool,
         {
             type Searcher = ElemSearcher<F>;
-            type Checker = ElemSearcher<F>;
+            type Consumer = ElemSearcher<F>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
@@ -23,7 +23,7 @@ macro_rules! impl_pattern {
             }
 
             #[inline]
-            fn into_checker(self) -> Self::Checker {
+            fn into_consumer(self) -> Self::Consumer {
                 ElemSearcher {
                     predicate: self,
                 }
@@ -50,12 +50,12 @@ where
     }
 }
 
-unsafe impl<T, F> Checker<[T]> for ElemSearcher<F>
+unsafe impl<T, F> Consumer<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {
     #[inline]
-    fn check(&mut self, span: Span<&[T]>) -> Option<usize> {
+    fn consume(&mut self, span: Span<&[T]>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         if range.end == range.start {
             return None;
@@ -93,12 +93,12 @@ where
     }
 }
 
-unsafe impl<T, F> ReverseChecker<[T]> for ElemSearcher<F>
+unsafe impl<T, F> ReverseConsumer<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {
     #[inline]
-    fn rcheck(&mut self, span: Span<&[T]>) -> Option<usize> {
+    fn rconsume(&mut self, span: Span<&[T]>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         if range.start == range.end {
             return None;
@@ -123,7 +123,7 @@ where
     F: FnMut(&T) -> bool,
 {}
 
-unsafe impl<T, F> DoubleEndedChecker<[T]> for ElemSearcher<F>
+unsafe impl<T, F> DoubleEndedConsumer<[T]> for ElemSearcher<F>
 where
     F: FnMut(&T) -> bool,
 {}

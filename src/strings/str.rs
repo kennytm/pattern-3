@@ -19,10 +19,10 @@ unsafe impl<'p> ReverseSearcher<str> for TwoWaySearcher<'p, u8> {
     }
 }
 
-unsafe impl<'p> Checker<str> for SliceChecker<'p, u8> {
+unsafe impl<'p> Consumer<str> for SliceChecker<'p, u8> {
     #[inline]
-    fn check(&mut self, haystack:  Span<&str>) -> Option<usize> {
-        self.check(haystack.as_bytes())
+    fn consume(&mut self, haystack:  Span<&str>) -> Option<usize> {
+        self.consume(haystack.as_bytes())
     }
     #[inline]
     fn trim_start(&mut self, haystack: &str) -> usize {
@@ -30,10 +30,10 @@ unsafe impl<'p> Checker<str> for SliceChecker<'p, u8> {
     }
 }
 
-unsafe impl<'p> ReverseChecker<str> for SliceChecker<'p, u8> {
+unsafe impl<'p> ReverseConsumer<str> for SliceChecker<'p, u8> {
     #[inline]
-    fn rcheck(&mut self, haystack: Span<&str>) -> Option<usize> {
-        self.rcheck(haystack.as_bytes())
+    fn rconsume(&mut self, haystack: Span<&str>) -> Option<usize> {
+        self.rconsume(haystack.as_bytes())
     }
     #[inline]
     fn trim_end(&mut self, haystack: &str) -> usize {
@@ -45,7 +45,7 @@ macro_rules! impl_pattern {
     (<[$($gen:tt)*]> ($ty:ty) for $pat:ty) => {
         impl<$($gen)*> Pattern<$ty> for $pat {
             type Searcher = SliceSearcher<'p, u8>;
-            type Checker = SliceChecker<'p, u8>;
+            type Consumer = SliceChecker<'p, u8>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
@@ -53,7 +53,7 @@ macro_rules! impl_pattern {
             }
 
             #[inline]
-            fn into_checker(self) -> Self::Checker {
+            fn into_consumer(self) -> Self::Consumer {
                 SliceChecker(self.as_bytes())
             }
         }
