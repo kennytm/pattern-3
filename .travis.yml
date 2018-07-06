@@ -1,0 +1,10 @@
+sudo: false
+language: rust
+rust:
+  - nightly
+
+git:
+  depth: 1
+
+notifications:
+  email: false

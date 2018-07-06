@@ -2,6 +2,13 @@
 name = "pattern-3"
 version = "0.1.0"
 authors = ["kennytm <kennytm@gmail.com>"]
+description = "Pattern API 3.0, generalization of `std::str::pattern`"
+repository = "https://github.com/kennytm/pattern-3"
+license = "MIT"
+
+[badges]
+travis-ci = { repository = "kennytm/pattern-3" }
+maintenance = { status = "experimental" }
 
 [dependencies]
 memchr = "2.0"
