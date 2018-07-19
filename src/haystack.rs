@@ -110,7 +110,7 @@ pub trait Hay {
 ///
 /// A `Haystack` is implemented for reference and collection types such as
 /// `&[T]`, `&mut [T]` and `Vec<T>`. Every haystack can be borrowed as an
-/// underlying representation call a [`Hay`]. Multiple haystacks may share the
+/// underlying representation called a [`Hay`]. Multiple haystacks may share the
 /// same hay type, and thus share the same implementation of pattern search
 /// algorithms.
 pub trait Haystack: Deref + Sized where Self::Target: Hay {
