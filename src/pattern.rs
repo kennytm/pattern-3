@@ -25,21 +25,7 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     ///
     /// If the pattern is not found, this method should return `None`.
     fn search(&mut self, span: Span<&A>) -> Option<Range<A::Index>>;
-}
 
-/// A checker for a [`Pattern`].
-///
-/// This trait provides methods for checking if a pattern matches the beginning
-/// of a hay.
-///
-/// # Safety
-///
-/// This trait is marked unsafe because the indices returned by
-/// [`.consume()`](Consumer::check) and [`.trim_start()`](Consumer::trim_start)
-/// methods are required to lie on valid codeward boundaries in the haystack.
-/// This enables consumers of this trait to slice the haystack without
-/// additional runtime checks.
-pub unsafe trait Consumer<A: Hay + ?Sized> {
     /// Checks if the pattern can be found at the beginning of the span.
     ///
     /// The hay and the restricted range for searching can be recovered by
@@ -86,13 +72,7 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
     ///
     /// If the pattern is not found, this method should return `None`.
     fn rsearch(&mut self, span: Span<&A>) -> Option<Range<A::Index>>;
-}
 
-/// A checker for the end of a hay.
-///
-/// This trait provides methods for checking if a pattern matches the end of a
-/// hay.
-pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
     /// Checks if the pattern can be found at the end of the span.
     ///
     /// The hay and the restricted range for searching can be recovered by
@@ -127,8 +107,6 @@ pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
 
 pub unsafe trait DoubleEndedSearcher<A: Hay + ?Sized>: ReverseSearcher<A> {}
 
-pub unsafe trait DoubleEndedConsumer<A: Hay + ?Sized>: ReverseConsumer<A> {}
-
 /// A pattern.
 pub trait Pattern<H: Haystack>: Sized
 where H::Target: Hay // FIXME: RFC 2089 or 2289
@@ -136,16 +114,15 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
     /// The searcher associated with this pattern.
     type Searcher: Searcher<H::Target>;
 
-    /// The checker associated with this pattern.
-    type Consumer: Consumer<H::Target>;
-
     /// Produces a searcher for this pattern.
     fn into_searcher(self) -> Self::Searcher;
 
     /// Produces a checker for this pattern.
-    fn into_consumer(self) -> Self::Consumer;
+    #[inline]
+    fn into_consumer(self) -> Self::Searcher {
+        self.into_searcher()
+    }
 }
-
 
 /// Searcher of an empty pattern.
 ///
@@ -171,9 +148,7 @@ unsafe impl<A: Hay + ?Sized> Searcher<A> for EmptySearcher {
         };
         Some(start..start)
     }
-}
 
-unsafe impl<A: Hay + ?Sized> Consumer<A> for EmptySearcher {
     #[inline]
     fn consume(&mut self, span: Span<&A>) -> Option<A::Index> {
         let (_, range) = span.into_parts();
@@ -200,9 +175,7 @@ unsafe impl<A: Hay + ?Sized> ReverseSearcher<A> for EmptySearcher {
         };
         Some(end..end)
     }
-}
 
-unsafe impl<A: Hay + ?Sized> ReverseConsumer<A> for EmptySearcher {
     #[inline]
     fn rconsume(&mut self, span: Span<&A>) -> Option<A::Index> {
         let (_, range) = span.into_parts();
@@ -216,4 +189,3 @@ unsafe impl<A: Hay + ?Sized> ReverseConsumer<A> for EmptySearcher {
 }
 
 unsafe impl<A: Hay + ?Sized> DoubleEndedSearcher<A> for EmptySearcher {}
-unsafe impl<A: Hay + ?Sized> DoubleEndedConsumer<A> for EmptySearcher {}

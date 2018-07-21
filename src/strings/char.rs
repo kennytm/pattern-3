@@ -10,10 +10,10 @@ pub struct CharSearcher {
 
     /// A utf8 encoded copy of the `needle`
     utf8_encoded: [u8; 4],
-}
 
-#[derive(Debug, Clone)]
-pub struct CharChecker(char);
+    /// The character currently being searched.
+    c: char,
+}
 
 impl CharSearcher {
     #[inline]
@@ -33,6 +33,7 @@ impl CharSearcher {
         CharSearcher {
             utf8_size,
             utf8_encoded,
+            c,
         }
     }
 }
@@ -54,19 +55,15 @@ unsafe impl Searcher<str> for CharSearcher {
             }
         }
     }
-}
 
-unsafe impl Consumer<str> for CharChecker {
     #[inline]
     fn consume(&mut self, span: Span<&str>) -> Option<usize> {
         let (hay, range) = span.into_parts();
-        let mut utf8_encoded = [0u8; 4];
-        let encoded = self.0.encode_utf8(&mut utf8_encoded);
-        let check_end = range.start + encoded.len();
+        let check_end = range.start + self.utf8_size;
         if range.end < check_end {
             return None;
         }
-        if unsafe { hay.as_bytes().get_unchecked(range.start..check_end) } == encoded.as_bytes() {
+        if unsafe { hay.as_bytes().get_unchecked(range.start..check_end) } == self.as_bytes() {
             Some(check_end)
         } else {
             None
@@ -75,7 +72,7 @@ unsafe impl Consumer<str> for CharChecker {
 
     #[inline]
     fn trim_start(&mut self, hay: &str) -> usize {
-        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.0);
+        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.c);
         checker.trim_start(hay)
     }
 }
@@ -98,28 +95,15 @@ unsafe impl ReverseSearcher<str> for CharSearcher {
             bytes = &bytes[..(index - 1)];
         }
     }
-}
 
-unsafe impl ReverseConsumer<str> for CharChecker {
     #[inline]
     fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
-        // let (hay, range) = span.into_parts();
-        // let mut utf8_encoded = [0u8; 4];
-        // let encoded_len = self.0.encode_utf8(&mut utf8_encoded).len();
-        // let index = range.end.wrapping_sub(encoded_len);
-        // if hay.as_bytes().get(range.start..index) == Some(&utf8_encoded[..encoded_len]) {
-        //     Some(index)
-        // } else {
-        //     None
-        // }
         let (hay, range) = span.into_parts();
-        let mut utf8_encoded = [0u8; 4];
-        let encoded = self.0.encode_utf8(&mut utf8_encoded);
-        if range.start + encoded.len() > range.end {
+        if range.start + self.utf8_size > range.end {
             return None;
         }
-        let check_start = range.end - encoded.len();
-        if unsafe { hay.as_bytes().get_unchecked(check_start..range.end) } == encoded.as_bytes() {
+        let check_start = range.end - self.utf8_size;
+        if unsafe { hay.as_bytes().get_unchecked(check_start..range.end) } == self.as_bytes() {
             Some(check_start)
         } else {
             None
@@ -128,28 +112,21 @@ unsafe impl ReverseConsumer<str> for CharChecker {
 
     #[inline]
     fn trim_end(&mut self, haystack: &str) -> usize {
-        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.0);
+        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.c);
         checker.trim_end(haystack)
     }
 }
 
 unsafe impl DoubleEndedSearcher<str> for CharSearcher {}
-unsafe impl DoubleEndedConsumer<str> for CharChecker {}
 
 macro_rules! impl_pattern {
     ($ty:ty) => {
         impl<'h> Pattern<$ty> for char {
             type Searcher = CharSearcher;
-            type Consumer = CharChecker;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
                 CharSearcher::new(self)
-            }
-
-            #[inline]
-            fn into_consumer(self) -> Self::Consumer {
-                CharChecker(self)
             }
         }
     }

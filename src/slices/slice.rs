@@ -413,6 +413,11 @@ where
         let (hay, range) = span.into_parts();
         self.next(hay, range)
     }
+
+    #[cold]
+    fn consume(&mut self, span: Span<&[T]>) -> Option<usize> {
+        NaiveSearcher(self.needle).consume(span)
+    }
 }
 
 unsafe impl<'p, T> ReverseSearcher<[T]> for TwoWaySearcher<'p, T>
@@ -424,19 +429,42 @@ where
         let (hay, range) = span.into_parts();
         self.next_back(hay, range)
     }
+
+    #[cold]
+    fn rconsume(&mut self, span: Span<&[T]>) -> Option<usize> {
+        NaiveSearcher(self.needle).rconsume(span)
+    }
 }
 
 //------------------------------------------------------------------------------
-// Slice searcher
+// Naive (state-less) searcher
 //------------------------------------------------------------------------------
 
 #[derive(Debug)]
-pub struct SliceChecker<'p, T: 'p>(pub(crate) &'p [T]);
+pub struct NaiveSearcher<'p, T: 'p>(&'p [T]);
 
-unsafe impl<'p, T> Consumer<[T]> for SliceChecker<'p, T>
+impl<'p, T: 'p> Clone for NaiveSearcher<'p, T> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'p, T: 'p> Copy for NaiveSearcher<'p, T> {}
+
+unsafe impl<'p, T> Searcher<[T]> for NaiveSearcher<'p, T>
 where
     T: PartialEq + 'p,
 {
+    #[cold]
+    fn search(&mut self, span: Span<&[T]>) -> Option<Range<usize>> {
+        let range = span.original_range();
+        let mut position = span.into()
+            .windows(self.0.len())
+            .position(|window| window == self.0)?;
+        position += range.start;
+        Some(position..(position + self.0.len()))
+    }
+
     #[inline]
     fn consume(&mut self, span: Span<&[T]>) -> Option<usize> {
         let (hay, range) = span.into_parts();
@@ -452,10 +480,20 @@ where
     }
 }
 
-unsafe impl<'p, T> ReverseConsumer<[T]> for SliceChecker<'p, T>
+unsafe impl<'p, T> ReverseSearcher<[T]> for NaiveSearcher<'p, T>
 where
     T: PartialEq + 'p,
 {
+    #[cold]
+    fn rsearch(&mut self, span: Span<&[T]>) -> Option<Range<usize>> {
+        let range = span.original_range();
+        let mut position = span.into()
+            .windows(self.0.len())
+            .rposition(|window| window == self.0)?;
+        position += range.start;
+        Some(position..(position + self.0.len()))
+    }
+
     #[inline]
     fn rconsume(&mut self, span: Span<&[T]>) -> Option<usize> {
         let (hay, range) = span.into_parts();
@@ -471,18 +509,38 @@ where
     }
 }
 
+//------------------------------------------------------------------------------
+// Slice searcher
+//------------------------------------------------------------------------------
+
 #[derive(Debug)]
 pub enum SliceSearcher<'p, T: 'p> {
     TwoWay(TwoWaySearcher<'p, T>),
     Empty(EmptySearcher),
+    Naive(NaiveSearcher<'p, T>),
 }
 
 impl<'p, T: PartialEq + 'p> SliceSearcher<'p, T> {
-    pub fn new(slice: &'p [T]) -> Self {
+    #[inline]
+    pub fn new_searcher(slice: &'p [T]) -> Self {
         if slice.is_empty() {
             SliceSearcher::Empty(EmptySearcher::default())
         } else {
             SliceSearcher::TwoWay(TwoWaySearcher::new(slice))
+        }
+    }
+
+    #[inline]
+    pub fn new_consumer(slice: &'p [T]) -> Self {
+        SliceSearcher::Naive(NaiveSearcher(slice))
+    }
+
+    #[inline]
+    pub fn needle(&self) -> &'p [T] {
+        match self {
+            SliceSearcher::TwoWay(s) => s.needle,
+            SliceSearcher::Empty(_) => &[],
+            SliceSearcher::Naive(s) => s.0,
         }
     }
 }
@@ -493,21 +551,46 @@ impl<'p, T: 'p> Clone for SliceSearcher<'p, T> {
         match self {
             SliceSearcher::TwoWay(s) => SliceSearcher::TwoWay(*s),
             SliceSearcher::Empty(s) => SliceSearcher::Empty(s.clone()),
+            SliceSearcher::Naive(s) => SliceSearcher::Naive(*s),
         }
     }
+}
+
+macro_rules! forward {
+    (searcher: $self:expr, $s:ident => $e:expr) => {
+        match $self {
+            SliceSearcher::TwoWay($s) => $e,
+            SliceSearcher::Empty($s) => $e,
+            _ => panic!("can only be used with a searcher"),
+        }
+    };
+    (consumer: $self:expr, $s:ident => $e:expr) => {
+        match $self {
+            SliceSearcher::Naive($s) => $e,
+            _ => panic!("can only be used with a consumer"),
+        }
+    };
 }
 
 unsafe impl<'p, T, A> Searcher<A> for SliceSearcher<'p, T>
 where
     A: Hay<Index = usize> + ?Sized,
     TwoWaySearcher<'p, T>: Searcher<A>,
+    NaiveSearcher<'p, T>: Searcher<A>,
 {
     #[inline]
     fn search(&mut self, span: Span<&A>) -> Option<Range<usize>> {
-        match self {
-            SliceSearcher::TwoWay(s) => s.search(span),
-            SliceSearcher::Empty(s) => s.search(span),
-        }
+        forward!(searcher: self, s => s.search(span))
+    }
+
+    #[inline]
+    fn consume(&mut self, span: Span<&A>) -> Option<usize> {
+        forward!(consumer: self, s => s.consume(span))
+    }
+
+    #[inline]
+    fn trim_start(&mut self, hay: &A) -> usize {
+        forward!(consumer: self, s => s.trim_start(hay))
     }
 }
 
@@ -515,13 +598,21 @@ unsafe impl<'p, T, A> ReverseSearcher<A> for SliceSearcher<'p, T>
 where
     A: Hay<Index = usize> + ?Sized,
     TwoWaySearcher<'p, T>: ReverseSearcher<A>,
+    NaiveSearcher<'p, T>: ReverseSearcher<A>,
 {
     #[inline]
     fn rsearch(&mut self, span: Span<&A>) -> Option<Range<usize>> {
-        match self {
-            SliceSearcher::TwoWay(s) => s.rsearch(span),
-            SliceSearcher::Empty(s) => s.rsearch(span),
-        }
+        forward!(searcher: self, s => s.rsearch(span))
+    }
+
+    #[inline]
+    fn rconsume(&mut self, span: Span<&A>) -> Option<usize> {
+        forward!(consumer: self, s => s.rconsume(span))
+    }
+
+    #[inline]
+    fn trim_end(&mut self, hay: &A) -> usize {
+        forward!(consumer: self, s => s.trim_end(hay))
     }
 }
 
@@ -532,16 +623,15 @@ macro_rules! impl_pattern {
             T: PartialEq + 'p,
         {
             type Searcher = SliceSearcher<'p, T>;
-            type Consumer = SliceChecker<'p, T>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
-                SliceSearcher::new(self)
+                SliceSearcher::new_searcher(self)
             }
 
             #[inline]
-            fn into_consumer(self) -> Self::Consumer {
-                SliceChecker(self)
+            fn into_consumer(self) -> Self::Searcher {
+                SliceSearcher::new_consumer(self)
             }
         }
     }

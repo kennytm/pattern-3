@@ -1,7 +1,7 @@
 use pattern::*;
 use haystack::Span;
 use std::ops::Range;
-use slices::slice::{TwoWaySearcher, SliceSearcher, SliceChecker};
+use slices::slice::{TwoWaySearcher, SliceSearcher, NaiveSearcher};
 #[cfg(test)]
 use ext::{match_ranges, rmatch_ranges, starts_with, ends_with};
 
@@ -16,6 +16,10 @@ unsafe impl<'p> Searcher<Wtf8> for TwoWaySearcher<'p, u8> {
         let (hay, range) = span.into_parts();
         self.next(hay.as_inner(), range)
     }
+
+    fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
+        self.consume(span_as_inner(span))
+    }
 }
 
 unsafe impl<'p> ReverseSearcher<Wtf8> for TwoWaySearcher<'p, u8> {
@@ -24,6 +28,10 @@ unsafe impl<'p> ReverseSearcher<Wtf8> for TwoWaySearcher<'p, u8> {
         let (hay, range) = span.into_parts();
         self.next_back(hay.as_inner(), range)
     }
+
+    fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
+        self.rconsume(span_as_inner(span))
+    }
 }
 
 fn span_as_inner(span: Span<&Wtf8>) -> Span<&[u8]> {
@@ -31,25 +39,37 @@ fn span_as_inner(span: Span<&Wtf8>) -> Span<&[u8]> {
     unsafe { Span::from_parts(hay.as_inner(), range) }
 }
 
-unsafe impl<'p> Consumer<Wtf8> for SliceChecker<'p, u8> {
+unsafe impl<'p> Searcher<Wtf8> for NaiveSearcher<'p, u8> {
+    #[inline]
+    fn search(&mut self, span: Span<&Wtf8>) -> Option<Range<usize>> {
+        self.search(span_as_inner(span))
+    }
+
     #[inline]
     fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         self.consume(span_as_inner(span))
     }
+
     #[inline]
-    fn trim_start(&mut self, haystack: &Wtf8) -> usize {
-        self.trim_start(haystack.as_inner())
+    fn trim_start(&mut self, hay: &Wtf8) -> usize {
+        self.trim_start(hay.as_inner())
     }
 }
 
-unsafe impl<'p> ReverseConsumer<Wtf8> for SliceChecker<'p, u8> {
+unsafe impl<'p> ReverseSearcher<Wtf8> for NaiveSearcher<'p, u8> {
+    #[inline]
+    fn rsearch(&mut self, span: Span<&Wtf8>) -> Option<Range<usize>> {
+        self.rsearch(span_as_inner(span))
+    }
+
     #[inline]
     fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         self.rconsume(span_as_inner(span))
     }
+
     #[inline]
-    fn trim_end(&mut self, haystack: &Wtf8) -> usize {
-        self.trim_end(haystack.as_inner())
+    fn trim_end(&mut self, hay: &Wtf8) -> usize {
+        self.trim_end(hay.as_inner())
     }
 }
 
@@ -157,19 +177,6 @@ impl HighSurrogateSearcher {
     }
 }
 
-// pub enum Wtf8Searcher<'p> {
-//     Empty(EmptySearcher),
-//     Surrogates {
-//         low: Option<LowSurrogateSearcher>,
-//         high: Option<HighSurrogateSearcher>,
-//     },
-//     TwoWay {
-//         low: Option<LowSurrogateSearcher>,
-//         middle: TwoWaySearcher<'p, u8>,
-//         high: Option<HighSurrogateSearcher>,
-//     },
-// }
-
 #[derive(Debug, Clone)]
 pub struct Wtf8Searcher<'p> {
     low: Option<LowSurrogateSearcher>,
@@ -226,87 +233,21 @@ unsafe impl<'p> Searcher<Wtf8> for Wtf8Searcher<'p> {
         }
         None
     }
-}
 
-unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<'p> {
-    #[inline]
-    fn rsearch(&mut self, mut span: Span<&Wtf8>) -> Option<Range<usize>> {
-        let (hay, range) = span.clone().into_parts();
-        while let Some(subrange) = self.middle.rsearch(span.clone()) {
-            if let Some((low_type, high_type)) = compare_boundary_surrogates(
-                &self.low,
-                &self.high,
-                hay.as_inner(),
-                range.clone(),
-                subrange.clone(),
-            ) {
-                return Some(extend_subrange(range, subrange, low_type, high_type));
-            } else {
-                span = unsafe { Span::from_parts(hay, range.start..subrange.start) };
-            }
-        }
-        None
-
-        // match self {
-        //     Wtf8Searcher::Empty(s) => s.rsearch(span),
-        //     Wtf8Searcher::Surrogates { low, high } => {
-        //         let (hay, range) = span.into_parts();
-        //         let bytes = hay.as_inner();
-        //         let mut index = range.end;
-        //         loop {
-        //             match compare_boundary_surrogates(low, high, bytes, range.clone(), index..index) {
-        //                 Some((low_type, high_type)) => {
-        //                     return Some(extend_subrange(range, index..index, low_type, high_type));
-        //                 }
-        //                 None if index > range.start => {
-        //                     index = unsafe { hay.prev_index(index) };
-        //                 }
-        //                 None => {
-        //                     return None;
-        //                 }
-        //             }
-        //         }
-        //     }
-        //     Wtf8Searcher::TwoWay { low, middle, high } => {
-        //         let (hay, range) = span.into_parts();
-        //         let bytes = hay.as_inner();
-        //         let mut span = unsafe { Span::from_parts(bytes, range.clone()) };
-        //         while let Some(subrange) = middle.rsearch(span.clone()) {
-        //             match compare_boundary_surrogates(low, high, bytes, range.clone(), subrange.clone()) {
-        //                 Some((low_type, high_type)) => {
-        //                     return Some(extend_subrange(range, subrange, low_type, high_type));
-        //                 }
-        //                 None => {
-        //                     span = unsafe { span.slice_unchecked(range.start..subrange.start) };
-        //                 }
-        //             }
-        //         }
-        //         None
-        //     }
-        // }
-    }
-}
-
-pub struct Wtf8Checker<'p> {
-    low: Option<LowSurrogateSearcher>,
-    middle: &'p [u8],
-    high: Option<HighSurrogateSearcher>,
-}
-
-unsafe impl<'p> Consumer<Wtf8> for Wtf8Checker<'p> {
     #[inline]
     fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let bytes = hay[range.clone()].as_inner();
         let low_len = if self.low.is_some() { 3 } else { 0 };
         let high_len = if self.high.is_some() { 3 } else { 0 };
-        let mut match_len = low_len + self.middle.len() + high_len;
+        let middle = self.middle.needle();
+        let mut match_len = low_len + middle.len() + high_len;
         if bytes.len() < match_len {
             return None;
         }
         let middle_start = low_len;
         let middle_end = match_len - high_len;
-        if &bytes[middle_start..middle_end] != self.middle {
+        if &bytes[middle_start..middle_end] != middle {
             return None;
         }
         if let Some(high) = &self.high {
@@ -327,20 +268,40 @@ unsafe impl<'p> Consumer<Wtf8> for Wtf8Checker<'p> {
     }
 }
 
-unsafe impl<'p> ReverseConsumer<Wtf8> for Wtf8Checker<'p> {
+unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<'p> {
+    #[inline]
+    fn rsearch(&mut self, mut span: Span<&Wtf8>) -> Option<Range<usize>> {
+        let (hay, range) = span.clone().into_parts();
+        while let Some(subrange) = self.middle.rsearch(span.clone()) {
+            if let Some((low_type, high_type)) = compare_boundary_surrogates(
+                &self.low,
+                &self.high,
+                hay.as_inner(),
+                range.clone(),
+                subrange.clone(),
+            ) {
+                return Some(extend_subrange(range, subrange, low_type, high_type));
+            } else {
+                span = unsafe { Span::from_parts(hay, range.start..subrange.start) };
+            }
+        }
+        None
+    }
+
     #[inline]
     fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         let (hay, range) = span.into_parts();
         let bytes = hay[range.clone()].as_inner();
         let low_len = if self.low.is_some() { 3 } else { 0 };
         let high_len = if self.high.is_some() { 3 } else { 0 };
-        let mut match_len = low_len + self.middle.len() + high_len;
+        let middle = self.middle.needle();
+        let mut match_len = low_len + middle.len() + high_len;
         if bytes.len() < match_len {
             return None;
         }
         let middle_end = bytes.len() - high_len;
-        let middle_start = middle_end - self.middle.len();
-        if &bytes[middle_start..middle_end] != self.middle {
+        let middle_start = middle_end - middle.len();
+        if &bytes[middle_start..middle_end] != middle {
             return None;
         }
         if let Some(low) = &self.low {
@@ -364,22 +325,21 @@ unsafe impl<'p> ReverseConsumer<Wtf8> for Wtf8Checker<'p> {
 
 impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
     type Searcher = Wtf8Searcher<'p>;
-    type Consumer = Wtf8Checker<'p>;
 
     fn into_searcher(self) -> Self::Searcher {
         let (low, middle, high) = self.canonicalize();
         Wtf8Searcher {
             low: low.map(LowSurrogateSearcher::new),
-            middle: SliceSearcher::new(middle),
+            middle: SliceSearcher::new_searcher(middle),
             high: high.map(HighSurrogateSearcher::new),
         }
     }
 
-    fn into_consumer(self) -> Self::Consumer {
+    fn into_consumer(self) -> Self::Searcher {
         let (low, middle, high) = self.canonicalize();
-        Wtf8Checker {
+        Wtf8Searcher {
             low: low.map(LowSurrogateSearcher::new),
-            middle,
+            middle: SliceSearcher::new_consumer(middle),
             high: high.map(HighSurrogateSearcher::new),
         }
     }
@@ -387,13 +347,12 @@ impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
 
 impl<'h, 'p> Pattern<&'h Wtf8> for &'p str {
     type Searcher = SliceSearcher<'p, u8>;
-    type Consumer = SliceChecker<'p, u8>;
 
     fn into_searcher(self) -> Self::Searcher {
-        SliceSearcher::new(self.as_bytes())
+        SliceSearcher::new_searcher(self.as_bytes())
     }
 
-    fn into_consumer(self) -> Self::Consumer {
-        SliceChecker(self.as_bytes())
+    fn into_consumer(self) -> Self::Searcher {
+        SliceSearcher::new_consumer(self.as_bytes())
     }
 }

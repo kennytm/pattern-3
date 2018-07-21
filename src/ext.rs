@@ -1,5 +1,5 @@
 use haystack::{Hay, Haystack, Span};
-use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
+use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher};
 use std::iter::FusedIterator;
 use std::ops::Range;
 use std::fmt;
@@ -181,7 +181,7 @@ pub fn ends_with<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Consumer: ReverseConsumer<H::Target>,
+    P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     pattern.into_consumer().rconsume((*haystack).into()).is_some()
@@ -210,7 +210,7 @@ pub fn trim_end<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Consumer: ReverseConsumer<H::Target>,
+    P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let range = {
@@ -226,7 +226,7 @@ pub fn trim<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
     P: Pattern<H>,
-    P::Consumer: DoubleEndedConsumer<H::Target>,
+    P::Searcher: DoubleEndedSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let mut checker = pattern.into_consumer();
