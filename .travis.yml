@@ -6,5 +6,10 @@ rust:
 git:
   depth: 1
 
+script:
+  - cargo build --no-default-features
+  - cargo test
+  - cargo bench
+
 notifications:
   email: false
