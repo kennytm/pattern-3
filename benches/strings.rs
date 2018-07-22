@@ -211,10 +211,10 @@ make_test!(pat3_ends_with_ascii_char, s, ::pattern_3::ext::ends_with(s, '/'), 25
 //     short_mixed:         ~210 ns/iter
 //     short_pile_of_pool:  ~210 ns/iter
 // pat3:
-//     long_lorem_ipsum:    ~300 ns/iter [*slower*]
-//     short_ascii:         ~300 ns/iter [*slower*]
-//     short_mixed:         ~300 ns/iter [*slower*]
-//     short_pile_of_pool:  ~300 ns/iter [*slower*]
+//     long_lorem_ipsum:    ~200 ns/iter
+//     short_ascii:         ~200 ns/iter
+//     short_mixed:         ~200 ns/iter
+//     short_pile_of_pool:  ~200 ns/iter
 make_test!(std_ends_with_unichar, s, s.ends_with('\u{1F4A4}'), 256);
 make_test!(pat3_ends_with_unichar, s, ::pattern_3::ext::ends_with(s, '\u{1F4A4}'), 256);
 
@@ -224,10 +224,10 @@ make_test!(pat3_ends_with_unichar, s, ::pattern_3::ext::ends_with(s, '\u{1F4A4}'
 //     short_mixed:          ~60 ns/iter
 //     short_pile_of_pool: ~1000 ns/iter
 // pat3:
-//     long_lorem_ipsum:     ~50 ns/iter [*slower*]
-//     short_ascii:          ~50 ns/iter [*slower*]
-//     short_mixed:          ~90 ns/iter [*slower*]
-//     short_pile_of_pool: ~1200 ns/iter [*slower*]
+//     long_lorem_ipsum:     ~20 ns/iter
+//     short_ascii:          ~20 ns/iter
+//     short_mixed:          ~80 ns/iter [*slower*]
+//     short_pile_of_pool: ~1000 ns/iter
 make_test!(std_trim_left_unichar, s, s.trim_left_matches('💩'), 16);
 make_test!(pat3_trim_left_unichar, s, ::pattern_3::ext::trim_start(s, '💩'), 16);
 

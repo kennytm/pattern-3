@@ -177,6 +177,7 @@ where
     pattern.into_consumer().consume((*haystack).into()).is_some()
 }
 
+#[inline]
 pub fn ends_with<H, P>(haystack: H, pattern: P) -> bool
 where
     H: Haystack,
@@ -191,6 +192,7 @@ where
 // Trim
 //------------------------------------------------------------------------------
 
+#[inline]
 pub fn trim_start<H, P>(haystack: H, pattern: P) -> H
 where
     H: Haystack,
@@ -419,6 +421,7 @@ where
     })
 }
 
+#[inline]
 pub fn find<H, P>(haystack: H, pattern: P) -> Option<<H::Target as Hay>::Index>
 where
     H: Haystack,

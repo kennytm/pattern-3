@@ -58,22 +58,14 @@ unsafe impl Searcher<str> for CharSearcher {
 
     #[inline]
     fn consume(&mut self, span: Span<&str>) -> Option<usize> {
-        let (hay, range) = span.into_parts();
-        let check_end = range.start + self.utf8_size;
-        if range.end < check_end {
-            return None;
-        }
-        if unsafe { hay.as_bytes().get_unchecked(range.start..check_end) } == self.as_bytes() {
-            Some(check_end)
-        } else {
-            None
-        }
+        let mut consumer = Pattern::<&[u8]>::into_consumer(self.as_bytes());
+        consumer.consume(span.as_bytes())
     }
 
     #[inline]
     fn trim_start(&mut self, hay: &str) -> usize {
-        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.c);
-        checker.trim_start(hay)
+        let mut consumer = Pattern::<&str>::into_consumer(|c: char| c == self.c);
+        consumer.trim_start(hay)
     }
 }
 
@@ -98,22 +90,19 @@ unsafe impl ReverseSearcher<str> for CharSearcher {
 
     #[inline]
     fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
-        let (hay, range) = span.into_parts();
-        if range.start + self.utf8_size > range.end {
-            return None;
-        }
-        let check_start = range.end - self.utf8_size;
-        if unsafe { hay.as_bytes().get_unchecked(check_start..range.end) } == self.as_bytes() {
-            Some(check_start)
+        if self.utf8_size == 1 {
+            let mut consumer = Pattern::<&[u8]>::into_consumer(|b: &u8| *b == self.c as u8);
+            consumer.rconsume(span.as_bytes())
         } else {
-            None
+            let mut consumer = Pattern::<&str>::into_consumer(|c: char| c == self.c);
+            consumer.rconsume(span)
         }
     }
 
     #[inline]
     fn trim_end(&mut self, haystack: &str) -> usize {
-        let mut checker = Pattern::<&str>::into_consumer(|c: char| c == self.c);
-        checker.trim_end(haystack)
+        let mut consumer = Pattern::<&str>::into_consumer(|c: char| c == self.c);
+        consumer.trim_end(haystack)
     }
 }
 
