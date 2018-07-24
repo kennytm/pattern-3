@@ -89,7 +89,7 @@ make_test!(std_contains_bang_char, s, s.contains('!'));
 make_test!(pat3_contains_bang_char, s, ::pattern_3::ext::contains(s, '!'));
 
 // std:
-//     long_lorem_ipsum:    ~290 ns/iter
+//     long_lorem_ipsum:    ~270 ns/iter
 //     short_ascii:          ~10 ns/iter
 //     short_mixed:          ~10 ns/iter
 //     short_pile_of_pool:   ~20 ns/iter
@@ -107,7 +107,7 @@ make_test!(pat3_find_underscore_char, s, ::pattern_3::ext::find(s, '_'));
 //     short_mixed:          ~20 ns/iter
 //     short_pile_of_pool:   ~20 ns/iter
 // pat3:
-//     long_lorem_ipsum:    ~220 ns/iter
+//     long_lorem_ipsum:    ~210 ns/iter
 //     short_ascii:          ~20 ns/iter
 //     short_mixed:          ~20 ns/iter
 //     short_pile_of_pool:   ~20 ns/iter
@@ -115,15 +115,15 @@ make_test!(std_rfind_underscore_char, s, s.rfind('_'));
 make_test!(pat3_rfind_underscore_char, s, ::pattern_3::ext::rfind(s, '_'));
 
 // std:
-//     long_lorem_ipsum:    ~270 ns/iter
+//     long_lorem_ipsum:    ~260 ns/iter
 //     short_ascii:          ~10 ns/iter
 //     short_mixed:          ~10 ns/iter
-//     short_pile_of_pool:   ~20 ns/iter
+//     short_pile_of_pool:   ~10 ns/iter
 // pat3:
 //     long_lorem_ipsum:     ~55 ns/iter
-//     short_ascii:          ~15 ns/iter
-//     short_mixed:          ~15 ns/iter
-//     short_pile_of_pool:   ~15 ns/iter
+//     short_ascii:          ~10 ns/iter
+//     short_mixed:          ~10 ns/iter
+//     short_pile_of_pool:   ~10 ns/iter
 make_test!(std_find_zzz_char, s, s.find('\u{1F4A4}'));
 make_test!(pat3_find_zzz_char, s, ::pattern_3::ext::find(s, '\u{1F4A4}'));
 
@@ -161,8 +161,8 @@ make_test!(pat3_starts_with_ascii_char, s, ::pattern_3::ext::starts_with(s, '/')
 // pat3:
 //     long_lorem_ipsum:    ~180 ns/iter
 //     short_ascii:         ~180 ns/iter
-//     short_mixed:         ~770 ns/iter
-//     short_pile_of_pool:  ~930 ns/iter
+//     short_mixed:         ~680 ns/iter
+//     short_pile_of_pool:  ~870 ns/iter
 make_test!(std_starts_with_any_ascii_char, s, s.starts_with(|c: char| c.is_ascii()), 256);
 make_test!(pat3_starts_with_any_ascii_char, s, ::pattern_3::ext::starts_with(s, |c: char| c.is_ascii()), 256);
 
@@ -170,7 +170,7 @@ make_test!(pat3_starts_with_any_ascii_char, s, ::pattern_3::ext::starts_with(s, 
 //     long_lorem_ipsum:    ~340 ns/iter
 //     short_ascii:         ~340 ns/iter
 //     short_mixed:         ~200 ns/iter
-//     short_pile_of_pool:  ~680 ns/iter
+//     short_pile_of_pool:  ~670 ns/iter
 // pat3:
 //     long_lorem_ipsum:    ~260 ns/iter
 //     short_ascii:         ~270 ns/iter
@@ -180,15 +180,15 @@ make_test!(std_starts_with_string, s, s.starts_with("💩💩"), 256);
 make_test!(pat3_starts_with_string, s, ::pattern_3::ext::starts_with(s, "💩💩"), 256);
 
 // std:
-//     long_lorem_ipsum:    ~300 ns/iter
-//     short_ascii:         ~300 ns/iter
-//     short_mixed:         ~750 ns/iter
-//     short_pile_of_pool:  ~840 ns/iter
+//     long_lorem_ipsum:    ~330 ns/iter
+//     short_ascii:         ~330 ns/iter
+//     short_mixed:         ~830 ns/iter
+//     short_pile_of_pool:  ~910 ns/iter
 // pat3:
-//     long_lorem_ipsum:    ~270 ns/iter
-//     short_ascii:         ~270 ns/iter
-//     short_mixed:         ~270 ns/iter
-//     short_pile_of_pool:  ~270 ns/iter
+//     long_lorem_ipsum:    ~310 ns/iter
+//     short_ascii:         ~310 ns/iter
+//     short_mixed:         ~310 ns/iter
+//     short_pile_of_pool:  ~310 ns/iter
 make_test!(std_starts_with_unichar, s, s.starts_with('\u{1F4A4}'), 256);
 make_test!(pat3_starts_with_unichar, s, ::pattern_3::ext::starts_with(s, '\u{1F4A4}'), 256);
 
@@ -207,27 +207,27 @@ make_test!(pat3_ends_with_ascii_char, s, ::pattern_3::ext::ends_with(s, '/'), 25
 
 // std:
 //     long_lorem_ipsum:    ~210 ns/iter
-//     short_ascii:         ~220 ns/iter
+//     short_ascii:         ~210 ns/iter
 //     short_mixed:         ~210 ns/iter
 //     short_pile_of_pool:  ~210 ns/iter
 // pat3:
-//     long_lorem_ipsum:    ~280 ns/iter [*slower*]
-//     short_ascii:         ~280 ns/iter [*slower*]
-//     short_mixed:         ~280 ns/iter [*slower*]
-//     short_pile_of_pool:  ~280 ns/iter [*slower*]
+//     long_lorem_ipsum:    ~200 ns/iter
+//     short_ascii:         ~200 ns/iter
+//     short_mixed:         ~200 ns/iter
+//     short_pile_of_pool:  ~200 ns/iter
 make_test!(std_ends_with_unichar, s, s.ends_with('\u{1F4A4}'), 256);
 make_test!(pat3_ends_with_unichar, s, ::pattern_3::ext::ends_with(s, '\u{1F4A4}'), 256);
 
 // std:
-//     long_lorem_ipsum:    ~130 ns/iter
-//     short_ascii:         ~130 ns/iter
-//     short_mixed:         ~160 ns/iter
-//     short_pile_of_pool: ~1500 ns/iter
+//     long_lorem_ipsum:     ~20 ns/iter
+//     short_ascii:          ~20 ns/iter
+//     short_mixed:          ~60 ns/iter
+//     short_pile_of_pool: ~1000 ns/iter
 // pat3:
-//     long_lorem_ipsum:     ~60 ns/iter
-//     short_ascii:          ~60 ns/iter
-//     short_mixed:         ~100 ns/iter
-//     short_pile_of_pool: ~1100 ns/iter
+//     long_lorem_ipsum:     ~20 ns/iter
+//     short_ascii:          ~20 ns/iter
+//     short_mixed:          ~80 ns/iter [*slower*]
+//     short_pile_of_pool: ~1000 ns/iter
 make_test!(std_trim_left_unichar, s, s.trim_left_matches('💩'), 16);
 make_test!(pat3_trim_left_unichar, s, ::pattern_3::ext::trim_start(s, '💩'), 16);
 
@@ -235,12 +235,12 @@ make_test!(pat3_trim_left_unichar, s, ::pattern_3::ext::trim_start(s, '💩'), 1
 //     long_lorem_ipsum:     ~60 ns/iter
 //     short_ascii:          ~60 ns/iter
 //     short_mixed:          ~60 ns/iter
-//     short_pile_of_pool:  ~100 ns/iter
+//     short_pile_of_pool:   ~90 ns/iter
 // pat3:
 //     long_lorem_ipsum:     ~40 ns/iter
 //     short_ascii:          ~40 ns/iter
 //     short_mixed:          ~50 ns/iter
-//     short_pile_of_pool:  ~100 ns/iter
+//     short_pile_of_pool:   ~90 ns/iter
 make_test!(std_trim_right_unichar, s, s.trim_right_matches('!'), 16);
 make_test!(pat3_trim_right_unichar, s, ::pattern_3::ext::trim_end(s, '!'), 16);
 
@@ -248,10 +248,10 @@ make_test!(std_trim_both_unichar, s, s.trim_matches('💩'), 16);
 make_test!(pat3_trim_both_unichar, s, ::pattern_3::ext::trim(s, '💩'), 16);
 
 // std:
-//     long_lorem_ipsum:   ~1100 ns/iter
-//     short_ascii:        ~1100 ns/iter
-//     short_mixed:        ~1100 ns/iter
-//     short_pile_of_pool: ~2600 ns/iter
+//     long_lorem_ipsum:   ~1200 ns/iter
+//     short_ascii:        ~1200 ns/iter
+//     short_mixed:        ~1200 ns/iter
+//     short_pile_of_pool: ~3000 ns/iter
 // pat3:
 //     long_lorem_ipsum:     ~30 ns/iter
 //     short_ascii:          ~30 ns/iter
@@ -261,61 +261,61 @@ make_test!(std_trim_left_unicode_string, s, s.trim_left_matches("💩💩"), 16)
 make_test!(pat3_trim_left_unicode_string, s, ::pattern_3::ext::trim_start(s, "💩💩"), 16);
 
 // std:
-//     long_lorem_ipsum:    ~500 ns/iter
-//     short_ascii:         ~380 ns/iter
-//     short_mixed:         ~500 ns/iter
-//     short_pile_of_pool:  ~430 ns/iter
+//     long_lorem_ipsum:    ~640 ns/iter
+//     short_ascii:         ~470 ns/iter
+//     short_mixed:         ~640 ns/iter
+//     short_pile_of_pool:  ~500 ns/iter
 // pat3:
-//     long_lorem_ipsum:     ~60 ns/iter
-//     short_ascii:          ~30 ns/iter
-//     short_mixed:          ~60 ns/iter
-//     short_pile_of_pool:   ~30 ns/iter
+//     long_lorem_ipsum:     ~30 ns/iter
+//     short_ascii:          ~15 ns/iter
+//     short_mixed:          ~30 ns/iter
+//     short_pile_of_pool:   ~15 ns/iter
 make_test!(std_trim_right_ascii_string, s, s.trim_right_matches("m!"), 16);
 make_test!(pat3_trim_right_ascii_string, s, ::pattern_3::ext::trim_end(s, "m!"), 16);
 
 // std:
-//     long_lorem_ipsum:    ~250 ns/iter
-//     short_ascii:         ~210 ns/iter
-//     short_mixed:         ~630 ns/iter
+//     long_lorem_ipsum:    ~170 ns/iter
+//     short_ascii:         ~140 ns/iter
+//     short_mixed:         ~500 ns/iter
 //     short_pile_of_pool: ~1300 ns/iter
 // pat3:
-//     long_lorem_ipsum:    ~110 ns/iter
-//     short_ascii:         ~100 ns/iter
+//     long_lorem_ipsum:    ~100 ns/iter
+//     short_ascii:          ~90 ns/iter
 //     short_mixed:         ~400 ns/iter
-//     short_pile_of_pool: ~1100 ns/iter
+//     short_pile_of_pool: ~1000 ns/iter
 make_test!(std_find_fn, s, s.find(|c: char| c == ' '), 16);
 make_test!(pat3_find_fn, s, ::pattern_3::ext::find(s, |c: char| c == ' '), 16);
 
 // std:
-//     long_lorem_ipsum:    ~250 ns/iter
-//     short_ascii:         ~140 ns/iter
-//     short_mixed:         ~120 ns/iter
-//     short_pile_of_pool: ~1100 ns/iter
+//     long_lorem_ipsum:    ~190 ns/iter
+//     short_ascii:         ~110 ns/iter
+//     short_mixed:         ~100 ns/iter
+//     short_pile_of_pool:  ~870 ns/iter
 // pat3:
 //     long_lorem_ipsum:    ~220 ns/iter
 //     short_ascii:         ~130 ns/iter
-//     short_mixed:         ~120 ns/iter
-//     short_pile_of_pool: ~1000 ns/iter
+//     short_mixed:         ~110 ns/iter
+//     short_pile_of_pool:  ~980 ns/iter
 make_test!(std_rfind_fn, s, s.rfind(|c: char| c == ' '), 16);
 make_test!(pat3_rfind_fn, s, ::pattern_3::ext::rfind(s, |c: char| c == ' '), 16);
 
 // std:
-//     long_lorem_ipsum:   ~4500 ns/iter
-//     short_ascii:         ~120 ns/iter
-//     short_mixed:           ~6 ns/iter
-//     short_pile_of_pool:    ~7 ns/iter
+//     long_lorem_ipsum:   ~3300 ns/iter
+//     short_ascii:          ~90 ns/iter
+//     short_mixed:           ~4 ns/iter
+//     short_pile_of_pool:    ~5 ns/iter
 // pat3:
-//     long_lorem_ipsum:   ~1900 ns/iter
-//     short_ascii:          ~70 ns/iter
+//     long_lorem_ipsum:   ~1700 ns/iter
+//     short_ascii:          ~60 ns/iter
 //     short_mixed:           ~5 ns/iter
-//     short_pile_of_pool:    ~6 ns/iter
+//     short_pile_of_pool:    ~7 ns/iter
 make_test!(std_trim_left_ascii_char, s, s.trim_left_matches(|c: char| c.is_ascii()));
 make_test!(pat3_trim_left_ascii_char, s, ::pattern_3::ext::trim_start(s, |c: char| c.is_ascii()));
 
 // std:
-//     long_lorem_ipsum:   ~2900 ns/iter
-//     short_ascii:          ~80 ns/iter
-//     short_mixed:          ~60 ns/iter
+//     long_lorem_ipsum:   ~1600 ns/iter
+//     short_ascii:          ~50 ns/iter
+//     short_mixed:          ~40 ns/iter
 //     short_pile_of_pool:    ~6 ns/iter
 // pat3:
 //     long_lorem_ipsum:   ~1300 ns/iter
@@ -329,26 +329,26 @@ make_test!(std_trim_both_ascii_char, s, s.trim_matches(|c: char| c.is_ascii()));
 make_test!(pat3_trim_both_ascii_char, s, ::pattern_3::ext::trim(s, |c: char| c.is_ascii()));
 
 // std:
-//     long_lorem_ipsum:   ~5000 ns/iter
+//     long_lorem_ipsum:   ~5200 ns/iter
 //     short_ascii:         ~130 ns/iter
 //     short_mixed:         ~130 ns/iter
 //     short_pile_of_pool:  ~100 ns/iter
 // pat3:
-//     long_lorem_ipsum:   ~3700 ns/iter
-//     short_ascii:         ~100 ns/iter
+//     long_lorem_ipsum:   ~3900 ns/iter
+//     short_ascii:          ~90 ns/iter
 //     short_mixed:          ~90 ns/iter
-//     short_pile_of_pool:  ~100 ns/iter
+//     short_pile_of_pool:   ~90 ns/iter
 make_test!(std_contains_bang_str, s, s.contains("!"));
 make_test!(pat3_contains_bang_str, s, ::pattern_3::ext::contains(s, "!"));
 
 // std:
 //     long_lorem_ipsum:   ~6200 ns/iter
 //     short_ascii:         ~200 ns/iter
-//     short_mixed:         ~180 ns/iter
+//     short_mixed:         ~170 ns/iter
 //     short_pile_of_pool:  ~110 ns/iter
 // pat3:
-//     long_lorem_ipsum:   ~5900 ns/iter
-//     short_ascii:         ~190 ns/iter
+//     long_lorem_ipsum:   ~5700 ns/iter
+//     short_ascii:         ~180 ns/iter
 //     short_mixed:         ~160 ns/iter
 //     short_pile_of_pool:  ~110 ns/iter
 make_test!(std_match_indices_a_str, s, s.match_indices("a").count());
@@ -368,27 +368,27 @@ make_test!(std_match_indices_empty, s, s.match_indices("").count());
 make_test!(pat3_match_indices_empty, s, ::pattern_3::ext::match_indices(s, "").count());
 
 // std:
-//     long_lorem_ipsum:   ~6400 ns/iter
+//     long_lorem_ipsum:   ~6100 ns/iter
 //     short_ascii:         ~200 ns/iter
 //     short_mixed:         ~170 ns/iter
 //     short_pile_of_pool:  ~100 ns/iter
 // pat3:
-//     long_lorem_ipsum:   ~6300 ns/iter
-//     short_ascii:         ~200 ns/iter
-//     short_mixed:         ~180 ns/iter
-//     short_pile_of_pool:  ~120 ns/iter
+//     long_lorem_ipsum:   ~5800 ns/iter
+//     short_ascii:         ~180 ns/iter
+//     short_mixed:         ~160 ns/iter
+//     short_pile_of_pool:  ~110 ns/iter
 make_test!(std_split_a_str, s, s.split("a").count());
 make_test!(pat3_split_a_str, s, ::pattern_3::ext::split(s, "a").count());
 
 // std:
-//     long_lorem_ipsum:   ~9900 ns/iter
-//     short_ascii:         ~200 ns/iter
-//     short_mixed:         ~180 ns/iter
-//     short_pile_of_pool:  ~100 ns/iter
-// pat3:
-//     long_lorem_ipsum:   ~9500 ns/iter
+//     long_lorem_ipsum:   ~9300 ns/iter
 //     short_ascii:         ~200 ns/iter
 //     short_mixed:         ~190 ns/iter
+//     short_pile_of_pool:  ~100 ns/iter
+// pat3:
+//     long_lorem_ipsum:   ~8500 ns/iter
+//     short_ascii:         ~200 ns/iter
+//     short_mixed:         ~170 ns/iter
 //     short_pile_of_pool:  ~100 ns/iter
 make_test!(std_split_space_str, s, s.split(" ").count());
 make_test!(pat3_split_space_str, s, ::pattern_3::ext::split(s, " ").count());
@@ -399,7 +399,7 @@ make_test!(pat3_split_space_str, s, ::pattern_3::ext::split(s, " ").count());
 //     short_mixed:          ~80 ns/iter
 //     short_pile_of_pool:   ~70 ns/iter
 // pat3:
-//     long_lorem_ipsum:   ~1900 ns/iter
+//     long_lorem_ipsum:   ~1800 ns/iter
 //     short_ascii:          ~90 ns/iter
 //     short_mixed:          ~70 ns/iter
 //     short_pile_of_pool:   ~60 ns/iter
@@ -407,7 +407,7 @@ make_test!(std_split_ad_str, s, s.split("ad").count());
 make_test!(pat3_split_ad_str, s, ::pattern_3::ext::split(s, "ad").count());
 
 // std:     ~60 ns/iter
-// pat3:    ~40 ns/iter
+// pat3:    ~30 ns/iter
 #[bench]
 fn std_split_unicode_ascii(b: &mut Bencher) {
     let s = "ประเทศไทย中华Việt Namประเทศไทย中华Việt Nam";
@@ -434,8 +434,8 @@ fn pat3_split_ascii(b: &mut Bencher) {
     b.iter(|| assert_eq!(pattern_3::ext::split(s, ' ').count(), len));
 }
 
-// std:    ~140 ns/iter
-// pat3:   ~190 ns/iter [*slower*]
+// std:    ~110 ns/iter
+// pat3:   ~180 ns/iter [*slower*]
 #[bench]
 fn std_split_extern_fn(b: &mut Bencher) {
     let s = "Mary had a little lamb, Little lamb, little-lamb.";
@@ -453,8 +453,8 @@ fn pat3_split_extern_fn(b: &mut Bencher) {
     b.iter(|| assert_eq!(pattern_3::ext::split(s, pred).count(), len));
 }
 
-// std:     ~70 ns/iter
-// pat3:    ~50 ns/iter
+// std:     ~40 ns/iter
+// pat3:    ~45 ns/iter [*slower*]
 #[bench]
 fn std_split_closure(b: &mut Bencher) {
     let s = "Mary had a little lamb, Little lamb, little-lamb.";
@@ -468,8 +468,8 @@ fn pat3_split_closure(b: &mut Bencher) {
     b.iter(|| assert_eq!(::pattern_3::ext::split(s, |c: char| c == ' ').count(), len));
 }
 
-// std:     ~150 ns/iter
-// pat3:    ~150 ns/iter
+// std:     ~120 ns/iter
+// pat3:    ~150 ns/iter [*slower*]
 #[bench]
 fn std_split_slice(b: &mut Bencher) {
     let s = "Mary had a little lamb, Little lamb, little-lamb.";
