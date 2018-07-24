@@ -1,5 +1,5 @@
 use pattern::*;
-use haystack::Span;
+use haystack::{Span, Haystack};
 use slices::slice::{TwoWaySearcher, NaiveSearcher, SliceSearcher};
 use std::ops::Range;
 
@@ -62,8 +62,8 @@ unsafe impl<'p> ReverseSearcher<str> for NaiveSearcher<'p, u8> {
 }
 
 macro_rules! impl_pattern {
-    (<[$($gen:tt)*]> ($ty:ty) for $pat:ty) => {
-        impl<$($gen)*> Pattern<$ty> for $pat {
+    (<[$($gen:tt)*]> for $pat:ty) => {
+        impl<$($gen)*, H: Haystack<Target = str>> Pattern<H> for $pat {
             type Searcher = SliceSearcher<'p, u8>;
 
             #[inline]
@@ -79,11 +79,7 @@ macro_rules! impl_pattern {
     }
 }
 
-impl_pattern!(<['h, 'p]> (&'h str) for &'p str);
+impl_pattern!(<['p]> for &'p str);
 #[cfg(feature = "std")]
-impl_pattern!(<['h, 'p]> (&'h str) for &'p String);
-impl_pattern!(<['h, 'q, 'p]> (&'h str) for &'q &'p str);
-impl_pattern!(<['h, 'p]> (&'h mut str) for &'p str);
-#[cfg(feature = "std")]
-impl_pattern!(<['h, 'p]> (&'h mut str) for &'p String);
-impl_pattern!(<['h, 'q, 'p]> (&'h mut str) for &'q &'p str);
+impl_pattern!(<['p]> for &'p String);
+impl_pattern!(<['q, 'p]> for &'q &'p str);

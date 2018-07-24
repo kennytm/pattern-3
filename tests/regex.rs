@@ -46,7 +46,7 @@ unsafe impl<'p> Searcher<str> for RegexSearcher<'p> {
     }
 }
 
-impl<'h, 'p> Pattern<&'h str> for &'p RegexWrapper {
+impl<'p, H: SharedHaystack<Target = str>> Pattern<H> for &'p RegexWrapper {
     type Searcher = RegexSearcher<'p>;
 
     fn into_searcher(self) -> RegexSearcher<'p> {

@@ -1,5 +1,5 @@
 use pattern::*;
-use haystack::Span;
+use haystack::{Haystack, Span};
 use memchr::{memchr, memrchr};
 use std::ops::Range;
 
@@ -108,18 +108,11 @@ unsafe impl ReverseSearcher<str> for CharSearcher {
 
 unsafe impl DoubleEndedSearcher<str> for CharSearcher {}
 
-macro_rules! impl_pattern {
-    ($ty:ty) => {
-        impl<'h> Pattern<$ty> for char {
-            type Searcher = CharSearcher;
+impl<H: Haystack<Target = str>> Pattern<H> for char {
+    type Searcher = CharSearcher;
 
-            #[inline]
-            fn into_searcher(self) -> Self::Searcher {
-                CharSearcher::new(self)
-            }
-        }
+    #[inline]
+    fn into_searcher(self) -> Self::Searcher {
+        CharSearcher::new(self)
     }
 }
-
-impl_pattern!(&'h str);
-impl_pattern!(&'h mut str);

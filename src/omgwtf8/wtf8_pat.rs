@@ -1,5 +1,5 @@
 use pattern::*;
-use haystack::Span;
+use haystack::{Haystack, Span};
 use std::ops::Range;
 use slices::slice::{TwoWaySearcher, SliceSearcher, NaiveSearcher};
 #[cfg(test)]
@@ -323,7 +323,7 @@ unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<'p> {
     }
 }
 
-impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
+impl<'p, H: Haystack<Target = Wtf8>> Pattern<H> for &'p Wtf8 {
     type Searcher = Wtf8Searcher<'p>;
 
     fn into_searcher(self) -> Self::Searcher {
@@ -345,6 +345,8 @@ impl<'h, 'p> Pattern<&'h Wtf8> for &'p Wtf8 {
     }
 }
 
+// FIXME cannot impl `Pattern<(_: Haystack<Target = Wtf8>)>` due to RFC 1672 being postponed.
+// (need to wait for chalk)
 impl<'h, 'p> Pattern<&'h Wtf8> for &'p str {
     type Searcher = SliceSearcher<'p, u8>;
 
