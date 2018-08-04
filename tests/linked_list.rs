@@ -401,7 +401,7 @@ fn test_iter() {
 //------------------------------------------------------------------------------
 // Now! We implement the haystack API on it.
 
-impl<T> Hay for Slice<T> {
+unsafe impl<T> Hay for Slice<T> {
     type Index = Cursor<T>;
 
     fn empty<'a>() -> &'a Self {
@@ -429,7 +429,7 @@ impl<T> Hay for Slice<T> {
     }
 }
 
-impl<T> Haystack for DList<T> {
+unsafe impl<T> Haystack for DList<T> {
     fn empty() -> Self {
         DList::new()
     }

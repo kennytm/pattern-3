@@ -31,7 +31,14 @@ use std::mem;
 /// allows multiple similar types to share the same implementation (e.g. the
 /// haystacks `&[T]`, `&mut [T]` and `Vec<T>` all have the same corresponding
 /// hay type `[T]`).
-pub trait Hay {
+///
+/// # Safety
+///
+/// This trait is unsafe as there are some unchecked requirements which the
+/// implementor must uphold. Failing to meet these requirements would lead to
+/// out-of-bound access. The safety requirements are written in each member of
+/// this trait.
+pub unsafe trait Hay {
     /// The index type of the haystack. Typically a `usize`.
     ///
     /// Splitting a hay must be sublinear using this index type. For instance,
@@ -39,19 +46,57 @@ pub trait Hay {
     /// integer offset (`usize`) as this would require O(n) time to chase the
     /// pointer and find the split point. Instead, for a linked list we should
     /// directly use the node pointer as the index.
+    ///
+    /// # Safety
+    ///
+    /// Valid indices of a single hay have a total order, even this type does
+    /// not require an `Ord` bound — for instance, to order two linked list
+    /// cursors, we need to chase the links and see if they meet; this is slow
+    /// and not suitable for implementing `Ord`, but conceptually an ordering
+    /// can be defined on linked list cursors.
     type Index: Copy + Debug + Eq;
 
-    /// Creates an empty haystack.
+    /// Creates an empty hay.
+    ///
+    /// # Safety
+    ///
+    /// An empty hay's start and end indices must be the same, e.g.
+    ///
+    /// ```rust
+    /// extern crate pattern_3;
+    /// use pattern_3::Hay;
+    ///
+    /// let empty = <str>::empty();
+    /// assert_eq!(empty.start_index(), empty.end_index());
+    /// ```
+    ///
+    /// This also suggests that there is exactly one valid index for an empty
+    /// hay.
+    ///
+    /// There is no guarantee that two separate calls to `.empty()` will produce
+    /// the same hay reference.
     fn empty<'a>() -> &'a Self;
 
     /// Obtains the index to the start of the hay.
     ///
     /// Usually this method returns `0`.
+    ///
+    /// # Safety
+    ///
+    /// Implementation must ensure that the start index of hay is the first
+    /// valid index, i.e. for all valid indices `i` of `self`, we have
+    /// `self.start_index() <= i`.
     fn start_index(&self) -> Self::Index;
 
     /// Obtains the index to the end of the hay.
     ///
     /// Usually this method returns the length of the hay.
+    ///
+    /// # Safety
+    ///
+    /// Implementation must ensure that the end index of hay is the last valid
+    /// index, i.e. for all valid indices `i` of `self`, we have
+    /// `i <= self.end_index()`.
     fn end_index(&self) -> Self::Index;
 
     /// Returns the next immediate index in this haystack.
@@ -60,6 +105,9 @@ pub trait Hay {
     ///
     /// The `index` must be a valid index, and also must not equal to
     /// `self.end_index()`.
+    ///
+    /// Implementation must ensure that if `j = self.next_index(i)`, then `j`
+    /// is also a valid index satisfying `j > i`.
     ///
     /// # Examples
     ///
@@ -73,7 +121,6 @@ pub trait Hay {
     ///     assert_eq!(sample.next_index(4), 8);
     /// }
     /// ```
-    ///
     unsafe fn next_index(&self, index: Self::Index) -> Self::Index;
 
     /// Returns the previous immediate index in this haystack.
@@ -82,6 +129,9 @@ pub trait Hay {
     ///
     /// The `index` must be a valid index, and also must not equal to
     /// `self.start_index()`.
+    ///
+    /// Implementation must ensure that if `j = self.prev_index(i)`, then `j`
+    /// is also a valid index satisfying `j < i`.
     ///
     /// # Examples
     ///
@@ -113,7 +163,14 @@ pub trait Hay {
 /// underlying representation called a [`Hay`]. Multiple haystacks may share the
 /// same hay type, and thus share the same implementation of pattern search
 /// algorithms.
-pub trait Haystack: Deref + Sized where Self::Target: Hay {
+///
+/// # Safety
+///
+/// This trait is unsafe as there are some unchecked requirements which the
+/// implementor must uphold. Failing to meet these requirements would lead to
+/// out-of-bound access. The safety requirements are written in each member of
+/// this trait.
+pub unsafe trait Haystack: Deref + Sized where Self::Target: Hay {
     /// Creates an empty haystack.
     fn empty() -> Self;
 
@@ -130,7 +187,7 @@ pub trait Haystack: Deref + Sized where Self::Target: Hay {
     /// # Safety
     ///
     /// Caller should ensure that the starts and end indices of `range` are
-    /// valid indices for the haystack `self`.
+    /// valid indices for the haystack `self` with `range.start <= range.end`.
     ///
     /// If the haystack is a mutable reference (`&mut A`), implementation must
     /// ensure that the 3 returned haystack are truly non-overlapping in memory.
@@ -156,8 +213,11 @@ pub trait Haystack: Deref + Sized where Self::Target: Hay {
     /// # Safety
     ///
     /// The starts and end indices of `range` must be valid indices for the
-    /// haystack `self`.
-    unsafe fn slice_unchecked(self, range: Range<<Self::Target as Hay>::Index>) -> Self;
+    /// haystack `self` with `range.start <= range.end`.
+    unsafe fn slice_unchecked(self, range: Range<<Self::Target as Hay>::Index>) -> Self {
+        let [_, middle, _] = self.split_around(range);
+        middle
+    }
 
     /// Transforms the range from relative to self's parent to the original
     /// haystack it was sliced from.
@@ -471,7 +531,7 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
     }
 }
 
-impl<'a, A: Hay + ?Sized + 'a> Haystack for &'a A {
+unsafe impl<'a, A: Hay + ?Sized + 'a> Haystack for &'a A {
     #[inline]
     fn empty() -> Self {
         A::empty()

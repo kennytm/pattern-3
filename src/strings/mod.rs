@@ -1,7 +1,7 @@
 use haystack::{Hay, Haystack};
 use std::ops::Range;
 
-impl Hay for str {
+unsafe impl Hay for str {
     type Index = usize;
 
     #[inline]
@@ -35,7 +35,7 @@ impl Hay for str {
     }
 }
 
-impl<'h> Haystack for &'h mut str {
+unsafe impl<'h> Haystack for &'h mut str {
     #[inline]
     fn empty() -> &'h mut str {
         Self::default()

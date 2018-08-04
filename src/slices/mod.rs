@@ -1,7 +1,7 @@
 use haystack::{Hay, Haystack};
 use std::ops::Range;
 
-impl<T> Hay for [T] {
+unsafe impl<T> Hay for [T] {
     type Index = usize;
 
     #[inline]
@@ -35,7 +35,7 @@ impl<T> Hay for [T] {
     }
 }
 
-impl<'h, T: 'h> Haystack for &'h mut [T] {
+unsafe impl<'h, T: 'h> Haystack for &'h mut [T] {
     #[inline]
     fn empty() -> Self {
         &mut []
@@ -60,7 +60,7 @@ impl<'h, T: 'h> Haystack for &'h mut [T] {
 }
 
 #[cfg(feature = "std")]
-impl<T> Haystack for Vec<T> {
+unsafe impl<T> Haystack for Vec<T> {
     #[inline]
     fn empty() -> Self {
         Vec::new()

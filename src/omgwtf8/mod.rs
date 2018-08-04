@@ -4,7 +4,7 @@ use std::ops::Range;
 pub mod wtf8;
 pub use self::wtf8::Wtf8;
 
-impl Hay for Wtf8 {
+unsafe impl Hay for Wtf8 {
     type Index = usize;
 
     #[inline]
