@@ -17,7 +17,7 @@ use std::ops::Range;
 ///
 /// # Examples
 ///
-/// Implement a searcher which matches `b"Aaaa"` from a byte string.
+/// Implement a searcher and consumer which matches `b"Aaaa"` from a byte string.
 ///
 /// ```rust
 /// extern crate pattern_3;
@@ -43,7 +43,9 @@ use std::ops::Range;
 ///
 ///         None
 ///     }
+/// }
 ///
+/// unsafe impl Consumer<[u8]> for Aaaa {
 ///     // checks if an `b"Aaaa" is at the beginning of the string, returns the end index.
 ///     fn consume(&mut self, span: Span<&[u8]>) -> Option<usize> {
 ///         let (hay, range) = span.into_parts();
@@ -58,7 +60,9 @@ use std::ops::Range;
 ///
 /// impl<H: Haystack<Target = [u8]>> pattern_3::Pattern<H> for Aaaa {
 ///     type Searcher = Self;
+///     type Consumer = Self;
 ///     fn into_searcher(self) -> Self { self }
+///     fn into_consumer(self) -> Self { self }
 /// }
 ///
 /// // test with some standard algorithms.
@@ -135,12 +139,27 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     /// assert_eq!(searcher.search(span.clone()), None);
     /// ```
     fn search(&mut self, span: Span<&A>) -> Option<Range<A::Index>>;
+}
 
+/// A consumer, for searching a [`Pattern`] from a [`Hay`] anchored at the
+/// beginnning.
+///
+/// This trait provides methods for matching a pattern anchored at the beginning
+/// of a hay.
+///
+/// See documentation of [`Searcher`] for an example.
+///
+/// # Safety
+///
+/// This trait is marked unsafe because the range returned by its methods are
+/// required to lie on valid codeword boundaries in the haystack. This enables
+/// users of this trait to slice the haystack without additional runtime checks.
+pub unsafe trait Consumer<A: Hay + ?Sized> {
     /// Checks if the pattern can be found at the beginning of the span.
     ///
     /// This method is used to implement the standard algorithm
     /// [`starts_with()`](::ext::starts_with) as well as providing the default
-    /// implementation for [`.trim_start()`](Searcher::trim_start).
+    /// implementation for [`.trim_start()`](Consumer::trim_start).
     ///
     /// The hay and the restricted range for searching can be recovered by
     /// calling `span`[`.into_parts()`](Span::into_parts). If a pattern can be
@@ -156,7 +175,7 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     ///
     /// ```
     /// extern crate pattern_3;
-    /// use pattern_3::{Searcher, Pattern, Span};
+    /// use pattern_3::{Consumer, Pattern, Span};
     ///
     /// let mut consumer = Pattern::<&str>::into_consumer(|c: char| c.is_ascii());
     /// let span = Span::from("Hi😋!!");
@@ -184,14 +203,14 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     /// Returns the start index of the slice after all prefixes are removed.
     ///
     /// A fast generic implementation in terms of
-    /// [`.consume()`](Searcher::consume) is provided by default. Nevertheless,
+    /// [`.consume()`](Consumer::consume) is provided by default. Nevertheless,
     /// many patterns allow a higher-performance specialization.
     ///
     /// # Examples
     ///
     /// ```rust
     /// extern crate pattern_3;
-    /// use pattern_3::{Searcher, Pattern, Span};
+    /// use pattern_3::{Consumer, Pattern, Span};
     ///
     /// let mut consumer = Pattern::<&str>::into_consumer('x');
     /// assert_eq!(consumer.trim_start("xxxyy"), 3);
@@ -274,12 +293,24 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
     /// assert_eq!(searcher.rsearch(span.clone()), None);
     /// ```
     fn rsearch(&mut self, span: Span<&A>) -> Option<Range<A::Index>>;
+}
 
+/// A consumer which can be searched from the end.
+///
+/// This trait provides methods for matching a pattern anchored at the end of a
+/// hay.
+///
+/// # Safety
+///
+/// This trait is marked unsafe because the range returned by its methods are
+/// required to lie on valid codeword boundaries in the haystack. This enables
+/// users of this trait to slice the haystack without additional runtime checks.
+pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
     /// Checks if the pattern can be found at the end of the span.
     ///
     /// This method is used to implement the standard algorithm
     /// [`ends_with()`](::ext::ends_with) as well as providing the default
-    /// implementation for [`.trim_end()`](ReverseSearcher::trim_end).
+    /// implementation for [`.trim_end()`](ReverseConsumer::trim_end).
     ///
     /// The hay and the restricted range for searching can be recovered by
     /// calling `span`[`.into_parts()`](Span::into_parts). If a pattern can be
@@ -295,7 +326,7 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
     ///
     /// ```
     /// extern crate pattern_3;
-    /// use pattern_3::{ReverseSearcher, Pattern, Span};
+    /// use pattern_3::{ReverseConsumer, Pattern, Span};
     ///
     /// let mut consumer = Pattern::<&str>::into_consumer(|c: char| c.is_ascii());
     /// let span = Span::from("Hi😋!!");
@@ -321,14 +352,14 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
     /// [`trim_end()`](::ext::trim_end).
     ///
     /// A fast generic implementation in terms of
-    /// [`.rconsume()`](ReverseSearcher::rconsume) is provided by default.
+    /// [`.rconsume()`](ReverseConsumer::rconsume) is provided by default.
     /// Nevertheless, many patterns allow a higher-performance specialization.
     ///
     /// # Examples
     ///
     /// ```rust
     /// extern crate pattern_3;
-    /// use pattern_3::{ReverseSearcher, Pattern, Span};
+    /// use pattern_3::{ReverseConsumer, Pattern, Span};
     ///
     /// let mut consumer = Pattern::<&str>::into_consumer('x');
     /// assert_eq!(consumer.trim_end("yyxxx"), 2);
@@ -364,14 +395,6 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
 /// * [`split_terminator`](::ext::split_terminator) / [`rsplit_terminator`](::ext::rsplit_terminator)
 /// * [`splitn`](::ext::splitn) / [`rsplitn`](::ext::rsplitn)
 ///
-/// It is also used to support the following standard algorithm:
-///
-/// * [`trim`](::ext::trim)
-///
-/// The `trim` function is implemented by calling
-/// [`trim_start`](::ext::trim_start) and [`trim_end`](::ext::trim_end) together.
-/// This trait encodes the fact that we can call these two functions in any order.
-///
 /// # Examples
 ///
 /// The searcher of a character implements `DoubleEndedSearcher`, while that of
@@ -402,8 +425,22 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
 /// assert_eq!(rev_backward, vec![(1, "xx"), (3, "xx")]);
 /// assert_ne!(forward, rev_backward);
 /// ```
+pub unsafe trait DoubleEndedSearcher<A: Hay + ?Sized>: ReverseSearcher<A> {}
+
+/// A consumer which can be searched from both end with consistent results.
 ///
-/// `trim` is implemented only for a `DoubleEndedSearcher`.
+/// It is used to support the following standard algorithm:
+///
+/// * [`trim`](::ext::trim)
+///
+/// The `trim` function is implemented by calling
+/// [`trim_start`](::ext::trim_start) and [`trim_end`](::ext::trim_end) together.
+/// This trait encodes the fact that we can call these two functions in any order.
+///
+/// # Examples
+///
+/// The consumer of a character implements `DoubleEndedConsumer`, while that of
+/// a string does not. `trim` is implemented only for a `DoubleEndedConsumer`.
 ///
 /// ```rust
 /// extern crate pattern_3;
@@ -425,7 +462,7 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
 /// assert_eq!(trim_end_first, "xy");
 /// // assert_eq!(trim_together, /*????*/); // cannot be defined
 /// ```
-pub unsafe trait DoubleEndedSearcher<A: Hay + ?Sized>: ReverseSearcher<A> {}
+pub unsafe trait DoubleEndedConsumer<A: Hay + ?Sized>: ReverseConsumer<A> {}
 
 /// A pattern, a type which can be converted into a searcher.
 ///
@@ -443,40 +480,23 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
     /// The searcher associated with this pattern.
     type Searcher: Searcher<H::Target>;
 
+    /// The consumer associated with this pattern.
+    type Consumer: Consumer<H::Target>;
+
     /// Produces a searcher for this pattern.
-    ///
-    /// You should only call the [`.search()`](Searcher::search) and
-    /// [`.rsearch()`](ReverseSearcher::rsearch) methods of the returned
-    /// instance. Calling other methods may cause panic.
-    ///
-    /// Use [`.into_consumer()`](Pattern::into_consumer) if you need to execute
-    /// [`.consume()`](Searcher::consume) instead.
     fn into_searcher(self) -> Self::Searcher;
 
     /// Produces a consumer for this pattern.
     ///
-    /// You should only call the [`.consume()`](Searcher::consume),
-    /// [`.rconsume()`](ReverseSearcher::rconsume),
-    /// [`.trim_start()`](Searcher::trim_start) and
-    /// [`.trim_end()`](ReverseSearcher::trim_end) methods of the returned
-    /// instance. Calling other methods may cause panic.
-    ///
-    /// Use [`.into_searcher()`](Pattern::into_searcher) if you need to execute
-    /// [`.search()`](Searcher::search) instead.
-    ///
-    /// By default a consumer and a searcher are the equivalent instance (thus
-    /// all methods would be available). Some pattern may override this method
+    /// Usually a consumer and a searcher can be the same type.
+    /// Some pattern may require different types
     /// when the two needs different optimization strategies. String searching
     /// is an example of this: we use the Two-Way Algorithm when searching for
     /// substrings, which needs to preprocess the pattern. However this is
     /// irrelevant for consuming, which only need to check for string equality
-    /// once. Therefore the Searcher for a string would be an `enum` with a
-    /// searcher part (using Two-Way Algorithm) and a consumer part (using naive
-    /// search).
-    #[inline]
-    fn into_consumer(self) -> Self::Searcher {
-        self.into_searcher()
-    }
+    /// once. Therefore the Consumer for a string would be a distinct type
+    /// using naive search.
+    fn into_consumer(self) -> Self::Consumer;
 }
 
 /// Searcher of an empty pattern.
@@ -503,7 +523,9 @@ unsafe impl<A: Hay + ?Sized> Searcher<A> for EmptySearcher {
         };
         Some(start..start)
     }
+}
 
+unsafe impl<A: Hay + ?Sized> Consumer<A> for EmptySearcher {
     #[inline]
     fn consume(&mut self, span: Span<&A>) -> Option<A::Index> {
         let (_, range) = span.into_parts();
@@ -530,7 +552,9 @@ unsafe impl<A: Hay + ?Sized> ReverseSearcher<A> for EmptySearcher {
         };
         Some(end..end)
     }
+}
 
+unsafe impl<A: Hay + ?Sized> ReverseConsumer<A> for EmptySearcher {
     #[inline]
     fn rconsume(&mut self, span: Span<&A>) -> Option<A::Index> {
         let (_, range) = span.into_parts();
@@ -544,3 +568,4 @@ unsafe impl<A: Hay + ?Sized> ReverseSearcher<A> for EmptySearcher {
 }
 
 unsafe impl<A: Hay + ?Sized> DoubleEndedSearcher<A> for EmptySearcher {}
+unsafe impl<A: Hay + ?Sized> DoubleEndedConsumer<A> for EmptySearcher {}

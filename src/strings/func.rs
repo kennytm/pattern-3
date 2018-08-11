@@ -43,7 +43,9 @@ unsafe impl<F: FnMut(char) -> bool> Searcher<str> for MultiCharSearcher<F> {
         let end = unsafe { end.offset_from(h.as_ptr()) as usize } + st;
         Some((end - c.len_utf8())..end)
     }
+}
 
+unsafe impl<F: FnMut(char) -> bool> Consumer<str> for MultiCharSearcher<F> {
     #[inline]
     fn consume(&mut self, hay: Span<&str>) -> Option<usize> {
         let (hay, range) = hay.into_parts();
@@ -81,7 +83,9 @@ unsafe impl<F: FnMut(char) -> bool> ReverseSearcher<str> for MultiCharSearcher<F
         let start = chars.as_str().len() + st;
         Some(start..(start + c.len_utf8()))
     }
+}
 
+unsafe impl<F: FnMut(char) -> bool> ReverseConsumer<str> for MultiCharSearcher<F> {
     #[inline]
     fn rconsume(&mut self, hay: Span<&str>) -> Option<usize> {
         let (hay, range) = hay.into_parts();
@@ -112,23 +116,36 @@ unsafe impl<F: FnMut(char) -> bool> ReverseSearcher<str> for MultiCharSearcher<F
 }
 
 unsafe impl<F: FnMut(char) -> bool> DoubleEndedSearcher<str> for MultiCharSearcher<F> {}
+unsafe impl<F: FnMut(char) -> bool> DoubleEndedConsumer<str> for MultiCharSearcher<F> {}
 
 macro_rules! impl_pattern {
     ($ty:ty) => {
         impl<'h, F: FnMut(char) -> bool> Pattern<$ty> for F {
             type Searcher = MultiCharSearcher<F>;
+            type Consumer = MultiCharSearcher<F>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
+                MultiCharSearcher { predicate: self }
+            }
+
+            #[inline]
+            fn into_consumer(self) -> Self::Consumer {
                 MultiCharSearcher { predicate: self }
             }
         }
 
         impl<'h, 'p> Pattern<$ty> for &'p [char] {
             type Searcher = MultiCharSearcher<MultiCharEq<'p>>;
+            type Consumer = MultiCharSearcher<MultiCharEq<'p>>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
+                MultiCharSearcher { predicate: MultiCharEq(self) }
+            }
+
+            #[inline]
+            fn into_consumer(self) -> Self::Consumer {
                 MultiCharSearcher { predicate: MultiCharEq(self) }
             }
         }

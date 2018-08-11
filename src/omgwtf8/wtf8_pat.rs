@@ -16,10 +16,6 @@ unsafe impl<'p> Searcher<Wtf8> for TwoWaySearcher<'p, u8> {
         let (hay, range) = span.into_parts();
         self.next(hay.as_inner(), range)
     }
-
-    fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
-        self.consume(span_as_inner(span))
-    }
 }
 
 unsafe impl<'p> ReverseSearcher<Wtf8> for TwoWaySearcher<'p, u8> {
@@ -28,10 +24,6 @@ unsafe impl<'p> ReverseSearcher<Wtf8> for TwoWaySearcher<'p, u8> {
         let (hay, range) = span.into_parts();
         self.next_back(hay.as_inner(), range)
     }
-
-    fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
-        self.rconsume(span_as_inner(span))
-    }
 }
 
 fn span_as_inner(span: Span<&Wtf8>) -> Span<&[u8]> {
@@ -39,12 +31,7 @@ fn span_as_inner(span: Span<&Wtf8>) -> Span<&[u8]> {
     unsafe { Span::from_parts(hay.as_inner(), range) }
 }
 
-unsafe impl<'p> Searcher<Wtf8> for NaiveSearcher<'p, u8> {
-    #[inline]
-    fn search(&mut self, span: Span<&Wtf8>) -> Option<Range<usize>> {
-        self.search(span_as_inner(span))
-    }
-
+unsafe impl<'p> Consumer<Wtf8> for NaiveSearcher<'p, u8> {
     #[inline]
     fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         self.consume(span_as_inner(span))
@@ -56,12 +43,7 @@ unsafe impl<'p> Searcher<Wtf8> for NaiveSearcher<'p, u8> {
     }
 }
 
-unsafe impl<'p> ReverseSearcher<Wtf8> for NaiveSearcher<'p, u8> {
-    #[inline]
-    fn rsearch(&mut self, span: Span<&Wtf8>) -> Option<Range<usize>> {
-        self.rsearch(span_as_inner(span))
-    }
-
+unsafe impl<'p> ReverseConsumer<Wtf8> for NaiveSearcher<'p, u8> {
     #[inline]
     fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         self.rconsume(span_as_inner(span))
@@ -178,9 +160,9 @@ impl HighSurrogateSearcher {
 }
 
 #[derive(Debug, Clone)]
-pub struct Wtf8Searcher<'p> {
+pub struct Wtf8Searcher<S> {
     low: Option<LowSurrogateSearcher>,
-    middle: SliceSearcher<'p, u8>,
+    middle: S,
     high: Option<HighSurrogateSearcher>,
 }
 
@@ -214,7 +196,7 @@ fn compare_boundary_surrogates(
     Some((low_type, high_type))
 }
 
-unsafe impl<'p> Searcher<Wtf8> for Wtf8Searcher<'p> {
+unsafe impl<'p> Searcher<Wtf8> for Wtf8Searcher<SliceSearcher<'p, u8>> {
     #[inline]
     fn search(&mut self, mut span: Span<&Wtf8>) -> Option<Range<usize>> {
         let (hay, range) = span.clone().into_parts();
@@ -233,7 +215,9 @@ unsafe impl<'p> Searcher<Wtf8> for Wtf8Searcher<'p> {
         }
         None
     }
+}
 
+unsafe impl<'p> Consumer<Wtf8> for Wtf8Searcher<NaiveSearcher<'p, u8>> {
     #[inline]
     fn consume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         let (hay, range) = span.into_parts();
@@ -268,7 +252,7 @@ unsafe impl<'p> Searcher<Wtf8> for Wtf8Searcher<'p> {
     }
 }
 
-unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<'p> {
+unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<SliceSearcher<'p, u8>> {
     #[inline]
     fn rsearch(&mut self, mut span: Span<&Wtf8>) -> Option<Range<usize>> {
         let (hay, range) = span.clone().into_parts();
@@ -287,7 +271,9 @@ unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<'p> {
         }
         None
     }
+}
 
+unsafe impl<'p> ReverseConsumer<Wtf8> for Wtf8Searcher<NaiveSearcher<'p, u8>> {
     #[inline]
     fn rconsume(&mut self, span: Span<&Wtf8>) -> Option<usize> {
         let (hay, range) = span.into_parts();
@@ -324,22 +310,23 @@ unsafe impl<'p> ReverseSearcher<Wtf8> for Wtf8Searcher<'p> {
 }
 
 impl<'p, H: Haystack<Target = Wtf8>> Pattern<H> for &'p Wtf8 {
-    type Searcher = Wtf8Searcher<'p>;
+    type Searcher = Wtf8Searcher<SliceSearcher<'p, u8>>;
+    type Consumer = Wtf8Searcher<NaiveSearcher<'p, u8>>;
 
     fn into_searcher(self) -> Self::Searcher {
         let (low, middle, high) = self.canonicalize();
         Wtf8Searcher {
             low: low.map(LowSurrogateSearcher::new),
-            middle: SliceSearcher::new_searcher(middle),
+            middle: SliceSearcher::new(middle),
             high: high.map(HighSurrogateSearcher::new),
         }
     }
 
-    fn into_consumer(self) -> Self::Searcher {
+    fn into_consumer(self) -> Self::Consumer {
         let (low, middle, high) = self.canonicalize();
         Wtf8Searcher {
             low: low.map(LowSurrogateSearcher::new),
-            middle: SliceSearcher::new_consumer(middle),
+            middle: NaiveSearcher::new(middle),
             high: high.map(HighSurrogateSearcher::new),
         }
     }
@@ -349,12 +336,13 @@ impl<'p, H: Haystack<Target = Wtf8>> Pattern<H> for &'p Wtf8 {
 // (need to wait for chalk)
 impl<'h, 'p> Pattern<&'h Wtf8> for &'p str {
     type Searcher = SliceSearcher<'p, u8>;
+    type Consumer = NaiveSearcher<'p, u8>;
 
     fn into_searcher(self) -> Self::Searcher {
-        SliceSearcher::new_searcher(self.as_bytes())
+        SliceSearcher::new(self.as_bytes())
     }
 
-    fn into_consumer(self) -> Self::Searcher {
-        SliceSearcher::new_consumer(self.as_bytes())
+    fn into_consumer(self) -> Self::Consumer {
+        NaiveSearcher::new(self.as_bytes())
     }
 }

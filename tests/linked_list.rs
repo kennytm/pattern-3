@@ -475,7 +475,12 @@ where
         }
         None
     }
+}
 
+unsafe impl<'p, T> Consumer<Slice<T>> for ElemSearcher<'p, T>
+where
+    T: PartialEq + 'p,
+{
     fn consume(&mut self, span: Span<&Slice<T>>) -> Option<Cursor<T>> {
         let range = span.into_parts().1;
         if range.start == range.end {
@@ -504,7 +509,12 @@ where
         }
         None
     }
+}
 
+unsafe impl<'p, T> ReverseConsumer<Slice<T>> for ElemSearcher<'p, T>
+where
+    T: PartialEq + 'p,
+{
     fn rconsume(&mut self, span: Span<&Slice<T>>) -> Option<Cursor<T>> {
         let range = span.into_parts().1;
         if range.start == range.end {
@@ -524,12 +534,19 @@ where
     T: PartialEq + 'p,
 {}
 
+unsafe impl<'p, T> DoubleEndedConsumer<Slice<T>> for ElemSearcher<'p, T>
+where
+    T: PartialEq + 'p,
+{}
+
 impl<'h, 'p, T> Pattern<&'h Slice<T>> for ElemSearcher<'p, T>
 where
     T: PartialEq + 'p
 {
     type Searcher = ElemSearcher<'p, T>;
+    type Consumer = ElemSearcher<'p, T>;
     fn into_searcher(self) -> Self::Searcher { self }
+    fn into_consumer(self) -> Self::Consumer { self }
 }
 
 impl<'h, 'p, T> Pattern<DList<T>> for ElemSearcher<'p, T>
@@ -537,7 +554,9 @@ where
     T: PartialEq + 'p
 {
     type Searcher = ElemSearcher<'p, T>;
+    type Consumer = ElemSearcher<'p, T>;
     fn into_searcher(self) -> Self::Searcher { self }
+    fn into_consumer(self) -> Self::Consumer { self }
 }
 
 //------------------------------------------------------------------------------
@@ -547,7 +566,9 @@ struct EmptyPattern;
 
 impl<'h, T> Pattern<DList<T>> for EmptyPattern {
     type Searcher = pattern::EmptySearcher;
+    type Consumer = pattern::EmptySearcher;
     fn into_searcher(self) -> Self::Searcher { Self::Searcher::default() }
+    fn into_consumer(self) -> Self::Consumer { Self::Consumer::default() }
 }
 
 //------------------------------------------------------------------------------

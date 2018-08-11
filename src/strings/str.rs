@@ -9,10 +9,6 @@ unsafe impl<'p> Searcher<str> for TwoWaySearcher<'p, u8> {
         let (hay, range) = span.into_parts();
         self.next(hay.as_bytes(), range)
     }
-
-    fn consume(&mut self, span: Span<&str>) -> Option<usize> {
-        self.consume(span.as_bytes())
-    }
 }
 
 unsafe impl<'p> ReverseSearcher<str> for TwoWaySearcher<'p, u8> {
@@ -21,18 +17,9 @@ unsafe impl<'p> ReverseSearcher<str> for TwoWaySearcher<'p, u8> {
         let (hay, range) = span.into_parts();
         self.next_back(hay.as_bytes(), range)
     }
-
-    fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
-        self.rconsume(span.as_bytes())
-    }
 }
 
-unsafe impl<'p> Searcher<str> for NaiveSearcher<'p, u8> {
-    #[inline]
-    fn search(&mut self, span: Span<&str>) -> Option<Range<usize>> {
-        self.search(span.as_bytes())
-    }
-
+unsafe impl<'p> Consumer<str> for NaiveSearcher<'p, u8> {
     #[inline]
     fn consume(&mut self, span: Span<&str>) -> Option<usize> {
         self.consume(span.as_bytes())
@@ -44,12 +31,7 @@ unsafe impl<'p> Searcher<str> for NaiveSearcher<'p, u8> {
     }
 }
 
-unsafe impl<'p> ReverseSearcher<str> for NaiveSearcher<'p, u8> {
-    #[inline]
-    fn rsearch(&mut self, span: Span<&str>) -> Option<Range<usize>> {
-        self.rsearch(span.as_bytes())
-    }
-
+unsafe impl<'p> ReverseConsumer<str> for NaiveSearcher<'p, u8> {
     #[inline]
     fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
         self.rconsume(span.as_bytes())
@@ -65,15 +47,16 @@ macro_rules! impl_pattern {
     (<[$($gen:tt)*]> for $pat:ty) => {
         impl<$($gen)*, H: Haystack<Target = str>> Pattern<H> for $pat {
             type Searcher = SliceSearcher<'p, u8>;
+            type Consumer = NaiveSearcher<'p, u8>;
 
             #[inline]
             fn into_searcher(self) -> Self::Searcher {
-                SliceSearcher::new_searcher(self.as_bytes())
+                SliceSearcher::new(self.as_bytes())
             }
 
             #[inline]
-            fn into_consumer(self) -> Self::Searcher {
-                SliceSearcher::new_consumer(self.as_bytes())
+            fn into_consumer(self) -> Self::Consumer {
+                NaiveSearcher::new(self.as_bytes())
             }
         }
     }

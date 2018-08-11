@@ -563,6 +563,7 @@ fn str_replacen<'a, P>(src: &'a str, from: P, to: &'a str, n: usize) -> String
 where
     P: Pattern<&'a str>,
     P::Searcher: Searcher<str>, // FIXME: RFC 2089
+    P::Consumer: Consumer<str>,
 {
     let mut res = String::with_capacity(src.len());
     replacen_with(src, from, |_| to, n, |h| res.push_str(h));
@@ -573,6 +574,7 @@ fn str_replace<'a, P>(src: &'a str, from: P, to: &'a str) -> String
 where
     P: Pattern<&'a str>,
     P::Searcher: Searcher<str>, // FIXME: RFC 2089
+    P::Consumer: Consumer<str>,
 {
     let mut res = String::with_capacity(src.len());
     replace_with(src, from, |_| to, |h| res.push_str(h));

@@ -55,7 +55,9 @@ unsafe impl Searcher<str> for CharSearcher {
             }
         }
     }
+}
 
+unsafe impl Consumer<str> for CharSearcher {
     #[inline]
     fn consume(&mut self, span: Span<&str>) -> Option<usize> {
         let mut consumer = Pattern::<&[u8]>::into_consumer(self.as_bytes());
@@ -87,7 +89,9 @@ unsafe impl ReverseSearcher<str> for CharSearcher {
             bytes = &bytes[..(index - 1)];
         }
     }
+}
 
+unsafe impl ReverseConsumer<str> for CharSearcher {
     #[inline]
     fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
         if self.utf8_size == 1 {
@@ -107,12 +111,19 @@ unsafe impl ReverseSearcher<str> for CharSearcher {
 }
 
 unsafe impl DoubleEndedSearcher<str> for CharSearcher {}
+unsafe impl DoubleEndedConsumer<str> for CharSearcher {}
 
 impl<H: Haystack<Target = str>> Pattern<H> for char {
     type Searcher = CharSearcher;
+    type Consumer = CharSearcher;
 
     #[inline]
     fn into_searcher(self) -> Self::Searcher {
+        CharSearcher::new(self)
+    }
+
+    #[inline]
+    fn into_consumer(self) -> Self::Consumer {
         CharSearcher::new(self)
     }
 }
