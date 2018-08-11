@@ -134,7 +134,7 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     /// // found the second "::".
     /// assert_eq!(searcher.search(span.clone()), Some(11..13));
     ///
-    /// // should found nothing now.
+    /// // should find nothing now.
     /// let span = unsafe { span.slice_unchecked(13..20) };
     /// assert_eq!(searcher.search(span.clone()), None);
     /// ```
