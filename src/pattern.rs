@@ -489,11 +489,11 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
     /// Produces a consumer for this pattern.
     ///
     /// Usually a consumer and a searcher can be the same type.
-    /// Some pattern may require different types
-    /// when the two needs different optimization strategies. String searching
+    /// Some patterns may require different types
+    /// when the two need different optimization strategies. String searching
     /// is an example of this: we use the Two-Way Algorithm when searching for
     /// substrings, which needs to preprocess the pattern. However this is
-    /// irrelevant for consuming, which only need to check for string equality
+    /// irrelevant for consuming, which only needs to check for string equality
     /// once. Therefore the Consumer for a string would be a distinct type
     /// using naive search.
     fn into_consumer(self) -> Self::Consumer;
