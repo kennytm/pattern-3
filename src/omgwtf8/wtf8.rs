@@ -112,7 +112,7 @@ fn decode_surrogate_pair(high: HighSurrogate, low: LowSurrogate) -> [u8; 4] {
     let lo = low.0.get() as u32;
     let hi = (high.0.get() as u32) + 0x100;
     let combined = (lo & 0xfff) | (hi << 12 & 0x303000) | (hi << 14 & 0x70f0000) | 0xf0808000;
-    u32::from_be(combined).to_bytes()
+    combined.to_be_bytes()
 }
 
 #[test]
