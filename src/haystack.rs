@@ -32,6 +32,9 @@ use std::mem;
 /// haystacks `&[T]`, `&mut [T]` and `Vec<T>` all have the same corresponding
 /// hay type `[T]`).
 ///
+/// In the other words, a `Haystack` is a generalized reference to `Hay`.
+/// `Hay`s are typically implemented on unsized slice types like `str` and `[T]`.
+///
 /// # Safety
 ///
 /// This trait is unsafe as there are some unchecked requirements which the
@@ -159,10 +162,12 @@ pub unsafe trait Hay {
 /// Linear splittable structure.
 ///
 /// A `Haystack` is implemented for reference and collection types such as
-/// `&[T]`, `&mut [T]` and `Vec<T>`. Every haystack can be borrowed as an
+/// `&str`, `&mut [T]` and `Vec<T>`. Every haystack can be borrowed as an
 /// underlying representation called a [`Hay`]. Multiple haystacks may share the
 /// same hay type, and thus share the same implementation of string search
 /// algorithms.
+///
+/// In the other words, a `Haystack` is a generalized reference to `Hay`.
 ///
 /// # Safety
 ///
@@ -268,7 +273,7 @@ pub unsafe trait Haystack: Deref + Sized where Self::Target: Hay {
     ) -> Range<<Self::Target as Hay>::Index>;
 }
 
-/// A haystack which can be shared and cheaply cloned (e.g. `&H`, `Rc<H>`).
+/// A [`Haystack`] which can be shared and cheaply cloned (e.g. `&H`, `Rc<H>`).
 ///
 /// If a haystack implements this marker trait, during internal operations the
 /// original haystack will be retained in full and cloned, rather than being
@@ -393,6 +398,44 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
 
 
 /// A span is a haystack coupled with the original range where the haystack is found.
+///
+/// It can be considered as a tuple `(H, Range<H::Target::Index>)`
+/// where the range is guaranteed to be valid for the haystack.
+///
+/// # Examples
+///
+/// ```
+/// use pattern_3::Span;
+///
+/// let orig_str = "Hello世界";
+/// let orig_span = Span::<&str>::from(orig_str);
+///
+/// // slice a span.
+/// let span = unsafe { orig_span.slice_unchecked(3..8) };
+///
+/// // further slicing (note the range is relative to the original span)
+/// let subspan = unsafe { span.slice_unchecked(4..8) };
+///
+/// // obtains the substring.
+/// let substring = subspan.into();
+/// assert_eq!(substring, "o世");
+/// ```
+///
+/// Visualizing the spans:
+///
+/// ```text
+///
+/// 0   1   2   3   4   5   6   7   8   9  10  11
+/// +---+---+---+---+---+---+---+---+---+---+---+
+/// | H | e | l | l | o | U+4E16    | U+754C    |    orig_str
+/// +---+---+---+---+---+---+---+---+---+---+---+
+///
+/// ^___________________________________________^    orig_span = (orig_str, 0..11)
+///
+///             ^___________________^                span = (orig_str, 3..8)
+///
+///                 ^_______________^                subspan = (orig_str, 4..8)
+/// ```
 #[derive(Debug, Clone)]
 pub struct Span<H: Haystack>
 where H::Target: Hay // FIXME: RFC 2089 or 2289

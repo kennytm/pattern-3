@@ -105,11 +105,18 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     /// * [`replacen_with`](::ext::replacen_with)
     ///
     /// The hay and the restricted range for searching can be recovered by
-    /// calling `span`[`.into_parts()`](Span::into_parts). The returned range
+    /// calling `span`[`.into_parts()`](Span::into_parts). The range returned
+    /// by this method
     /// should be relative to the hay and must be contained within the
     /// restricted range from the span.
     ///
     /// If the needle is not found, this method should return `None`.
+    ///
+    /// The reason this method takes a `Span<&A>` instead of just `&A` is
+    /// because some needles need context information provided by
+    /// the position of the current slice and the content around the slice.
+    /// Regex components like the start-/end-of-text anchors `^`/`$`
+    /// and word boundary `\b` are primary examples.
     ///
     /// # Examples
     ///
