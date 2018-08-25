@@ -1,4 +1,4 @@
-use pattern::*;
+use needle::*;
 use haystack::{Haystack, Span};
 use std::ops::Range;
 use slices::slice::{TwoWaySearcher, SliceSearcher, NaiveSearcher};
@@ -309,7 +309,7 @@ unsafe impl<'p> ReverseConsumer<Wtf8> for Wtf8Searcher<NaiveSearcher<'p, u8>> {
     }
 }
 
-impl<'p, H: Haystack<Target = Wtf8>> Pattern<H> for &'p Wtf8 {
+impl<'p, H: Haystack<Target = Wtf8>> Needle<H> for &'p Wtf8 {
     type Searcher = Wtf8Searcher<SliceSearcher<'p, u8>>;
     type Consumer = Wtf8Searcher<NaiveSearcher<'p, u8>>;
 
@@ -332,9 +332,9 @@ impl<'p, H: Haystack<Target = Wtf8>> Pattern<H> for &'p Wtf8 {
     }
 }
 
-// FIXME cannot impl `Pattern<(_: Haystack<Target = Wtf8>)>` due to RFC 1672 being postponed.
+// FIXME cannot impl `Needle<(_: Haystack<Target = Wtf8>)>` due to RFC 1672 being postponed.
 // (need to wait for chalk)
-impl<'h, 'p> Pattern<&'h Wtf8> for &'p str {
+impl<'h, 'p> Needle<&'h Wtf8> for &'p str {
     type Searcher = SliceSearcher<'p, u8>;
     type Consumer = NaiveSearcher<'p, u8>;
 

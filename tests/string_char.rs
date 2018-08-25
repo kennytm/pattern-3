@@ -6,8 +6,8 @@ use pattern_3::*;
 
 
 macro_rules! search_asserts {
-    ($haystack:expr, $pattern:expr, $testname:expr, [$($op:ident = $expected:expr,)*]) => {
-        let mut searcher = ext::match_ranges($haystack, $pattern).map(|(r, _)| r);
+    ($haystack:expr, $needle:expr, $testname:expr, [$($op:ident = $expected:expr,)*]) => {
+        let mut searcher = ext::match_ranges($haystack, $needle).map(|(r, _)| r);
         let actual = [$(searcher.$op()),*];
         assert_eq!(&actual[..], &[$($expected),*][..], $testname);
     };

@@ -1,4 +1,4 @@
-use pattern::*;
+use needle::*;
 use haystack::{Span, Haystack};
 use slices::slice::{TwoWaySearcher, NaiveSearcher, SliceSearcher};
 use std::ops::Range;
@@ -43,9 +43,9 @@ unsafe impl<'p> ReverseConsumer<str> for NaiveSearcher<'p, u8> {
     }
 }
 
-macro_rules! impl_pattern {
+macro_rules! impl_needle {
     (<[$($gen:tt)*]> for $pat:ty) => {
-        impl<$($gen)*, H: Haystack<Target = str>> Pattern<H> for $pat {
+        impl<$($gen)*, H: Haystack<Target = str>> Needle<H> for $pat {
             type Searcher = SliceSearcher<'p, u8>;
             type Consumer = NaiveSearcher<'p, u8>;
 
@@ -62,7 +62,7 @@ macro_rules! impl_pattern {
     }
 }
 
-impl_pattern!(<['p]> for &'p str);
+impl_needle!(<['p]> for &'p str);
 #[cfg(feature = "std")]
-impl_pattern!(<['p]> for &'p String);
-impl_pattern!(<['q, 'p]> for &'q &'p str);
+impl_needle!(<['p]> for &'p String);
+impl_needle!(<['q, 'p]> for &'q &'p str);

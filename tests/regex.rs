@@ -48,7 +48,7 @@ unsafe impl<'p> Consumer<str> for RegexSearcher<'p> {
     }
 }
 
-impl<'p, H: SharedHaystack<Target = str>> Pattern<H> for &'p RegexWrapper {
+impl<'p, H: SharedHaystack<Target = str>> Needle<H> for &'p RegexWrapper {
     type Searcher = RegexSearcher<'p>;
     type Consumer = RegexSearcher<'p>;
 
@@ -68,8 +68,8 @@ impl<'p, H: SharedHaystack<Target = str>> Pattern<H> for &'p RegexWrapper {
 }
 
 fn do_test(re: &str, haystack: &str, expected: &[(Range<usize>, &str)]) {
-    let pattern = RegexWrapper(Regex::new(re).unwrap());
-    assert_eq!(match_ranges(haystack, &pattern).collect::<Vec<_>>(), expected);
+    let needle = RegexWrapper(Regex::new(re).unwrap());
+    assert_eq!(match_ranges(haystack, &needle).collect::<Vec<_>>(), expected);
 }
 
 #[test]

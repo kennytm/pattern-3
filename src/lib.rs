@@ -9,7 +9,7 @@
     // used to treat `&[char]` as if a `FnMut(char)->bool`.
 
     arbitrary_self_types,
-    // just for convenience in Wtf8 impl, not required by Pattern API
+    // just for convenience in Wtf8 impl, not required by Needle API
 
     ptr_offset_from,
     iterator_find_map,
@@ -25,12 +25,12 @@ extern crate core as std;
 extern crate memchr;
 
 pub mod haystack;
-pub mod pattern;
+pub mod needle;
 mod slices;
 mod strings;
 mod omgwtf8;
 pub mod ext;
 
 pub use haystack::{Hay, Haystack, SharedHaystack, Span};
-pub use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
+pub use needle::{Needle, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
 pub use omgwtf8::Wtf8;

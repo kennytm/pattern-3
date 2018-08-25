@@ -1,4 +1,4 @@
-use pattern::*;
+use needle::*;
 use haystack::{Haystack, Span};
 use memchr::{memchr, memrchr};
 use std::ops::Range;
@@ -60,13 +60,13 @@ unsafe impl Searcher<str> for CharSearcher {
 unsafe impl Consumer<str> for CharSearcher {
     #[inline]
     fn consume(&mut self, span: Span<&str>) -> Option<usize> {
-        let mut consumer = Pattern::<&[u8]>::into_consumer(self.as_bytes());
+        let mut consumer = Needle::<&[u8]>::into_consumer(self.as_bytes());
         consumer.consume(span.as_bytes())
     }
 
     #[inline]
     fn trim_start(&mut self, hay: &str) -> usize {
-        let mut consumer = Pattern::<&str>::into_consumer(|c: char| c == self.c);
+        let mut consumer = Needle::<&str>::into_consumer(|c: char| c == self.c);
         consumer.trim_start(hay)
     }
 }
@@ -95,17 +95,17 @@ unsafe impl ReverseConsumer<str> for CharSearcher {
     #[inline]
     fn rconsume(&mut self, span: Span<&str>) -> Option<usize> {
         if self.utf8_size == 1 {
-            let mut consumer = Pattern::<&[u8]>::into_consumer(|b: &u8| *b == self.c as u8);
+            let mut consumer = Needle::<&[u8]>::into_consumer(|b: &u8| *b == self.c as u8);
             consumer.rconsume(span.as_bytes())
         } else {
-            let mut consumer = Pattern::<&str>::into_consumer(|c: char| c == self.c);
+            let mut consumer = Needle::<&str>::into_consumer(|c: char| c == self.c);
             consumer.rconsume(span)
         }
     }
 
     #[inline]
     fn trim_end(&mut self, haystack: &str) -> usize {
-        let mut consumer = Pattern::<&str>::into_consumer(|c: char| c == self.c);
+        let mut consumer = Needle::<&str>::into_consumer(|c: char| c == self.c);
         consumer.trim_end(haystack)
     }
 }
@@ -113,7 +113,7 @@ unsafe impl ReverseConsumer<str> for CharSearcher {
 unsafe impl DoubleEndedSearcher<str> for CharSearcher {}
 unsafe impl DoubleEndedConsumer<str> for CharSearcher {}
 
-impl<H: Haystack<Target = str>> Pattern<H> for char {
+impl<H: Haystack<Target = str>> Needle<H> for char {
     type Searcher = CharSearcher;
     type Consumer = CharSearcher;
 

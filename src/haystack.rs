@@ -161,7 +161,7 @@ pub unsafe trait Hay {
 /// A `Haystack` is implemented for reference and collection types such as
 /// `&[T]`, `&mut [T]` and `Vec<T>`. Every haystack can be borrowed as an
 /// underlying representation called a [`Hay`]. Multiple haystacks may share the
-/// same hay type, and thus share the same implementation of pattern search
+/// same hay type, and thus share the same implementation of string search
 /// algorithms.
 ///
 /// # Safety
@@ -494,9 +494,9 @@ where H::Target: Hay // FIXME: RFC 2089 or 2289
     /// usage is like:
     ///
     /// ```rust
-    /// # use pattern_3::{Span, Pattern, Searcher};
+    /// # use pattern_3::{Span, Needle, Searcher};
     /// # let span = Span::from("foo");
-    /// # let mut searcher = <&str as Pattern<&str>>::into_searcher("o");
+    /// # let mut searcher = <&str as Needle<&str>>::into_searcher("o");
     /// # (|| -> Option<()> {
     /// let range = searcher.search(span.borrow())?;
     /// let [left, middle, right] = unsafe { span.split_around(range) };

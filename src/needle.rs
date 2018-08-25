@@ -1,13 +1,13 @@
-//! Pattern traits.
+//! Needle traits.
 
 use haystack::{Haystack, Hay, Span};
 
 use std::ops::Range;
 
-/// A searcher, for searching a [`Pattern`] from a [`Hay`].
+/// A searcher, for searching a [`Needle`] from a [`Hay`].
 ///
 /// This trait provides methods for searching for non-overlapping matches of a
-/// pattern starting from the front (left) of a hay.
+/// needle starting from the front (left) of a hay.
 ///
 /// # Safety
 ///
@@ -25,7 +25,7 @@ use std::ops::Range;
 /// use std::ops::Range;
 ///
 /// // The searcher for searching `b"Aaaa"`, using naive search.
-/// // We are going to use this as a pattern too.
+/// // We are going to use this as a needle too.
 /// struct Aaaa;
 ///
 /// unsafe impl Searcher<[u8]> for Aaaa {
@@ -58,7 +58,7 @@ use std::ops::Range;
 ///     }
 /// }
 ///
-/// impl<H: Haystack<Target = [u8]>> pattern_3::Pattern<H> for Aaaa {
+/// impl<H: Haystack<Target = [u8]>> pattern_3::Needle<H> for Aaaa {
 ///     type Searcher = Self;
 ///     type Consumer = Self;
 ///     fn into_searcher(self) -> Self { self }
@@ -88,7 +88,7 @@ use std::ops::Range;
 /// );
 /// ```
 pub unsafe trait Searcher<A: Hay + ?Sized> {
-    /// Searches for the first range which the pattern can be found in the span.
+    /// Searches for the first range which the needle can be found in the span.
     ///
     /// This method is used to support the following standard algorithms:
     ///
@@ -109,7 +109,7 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     /// should be relative to the hay and must be contained within the
     /// restricted range from the span.
     ///
-    /// If the pattern is not found, this method should return `None`.
+    /// If the needle is not found, this method should return `None`.
     ///
     /// # Examples
     ///
@@ -118,9 +118,9 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     ///
     /// ```
     /// extern crate pattern_3;
-    /// use pattern_3::{Searcher, Pattern, Span};
+    /// use pattern_3::{Searcher, Needle, Span};
     ///
-    /// let mut searcher = Pattern::<&str>::into_searcher("::");
+    /// let mut searcher = Needle::<&str>::into_searcher("::");
     /// let span = Span::from("lion::tiger::leopard");
     /// //                     ^   ^      ^        ^
     /// // string indices:     0   4     11       20
@@ -141,10 +141,10 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
     fn search(&mut self, span: Span<&A>) -> Option<Range<A::Index>>;
 }
 
-/// A consumer, for searching a [`Pattern`] from a [`Hay`] anchored at the
+/// A consumer, for searching a [`Needle`] from a [`Hay`] anchored at the
 /// beginnning.
 ///
-/// This trait provides methods for matching a pattern anchored at the beginning
+/// This trait provides methods for matching a needle anchored at the beginning
 /// of a hay.
 ///
 /// See documentation of [`Searcher`] for an example.
@@ -155,18 +155,18 @@ pub unsafe trait Searcher<A: Hay + ?Sized> {
 /// required to lie on valid codeword boundaries in the haystack. This enables
 /// users of this trait to slice the haystack without additional runtime checks.
 pub unsafe trait Consumer<A: Hay + ?Sized> {
-    /// Checks if the pattern can be found at the beginning of the span.
+    /// Checks if the needle can be found at the beginning of the span.
     ///
     /// This method is used to implement the standard algorithm
     /// [`starts_with()`](::ext::starts_with) as well as providing the default
     /// implementation for [`.trim_start()`](Consumer::trim_start).
     ///
     /// The hay and the restricted range for searching can be recovered by
-    /// calling `span`[`.into_parts()`](Span::into_parts). If a pattern can be
+    /// calling `span`[`.into_parts()`](Span::into_parts). If a needle can be
     /// found starting at `range.start`, this method should return the end index
-    /// of the pattern relative to the hay.
+    /// of the needle relative to the hay.
     ///
-    /// If the pattern cannot be found at the beginning of the span, this method
+    /// If the needle cannot be found at the beginning of the span, this method
     /// should return `None`.
     ///
     /// # Examples
@@ -175,9 +175,9 @@ pub unsafe trait Consumer<A: Hay + ?Sized> {
     ///
     /// ```
     /// extern crate pattern_3;
-    /// use pattern_3::{Consumer, Pattern, Span};
+    /// use pattern_3::{Consumer, Needle, Span};
     ///
-    /// let mut consumer = Pattern::<&str>::into_consumer(|c: char| c.is_ascii());
+    /// let mut consumer = Needle::<&str>::into_consumer(|c: char| c.is_ascii());
     /// let span = Span::from("Hi😋!!");
     ///
     /// // consumes the first ASCII character
@@ -195,7 +195,7 @@ pub unsafe trait Consumer<A: Hay + ?Sized> {
     /// ```
     fn consume(&mut self, span: Span<&A>) -> Option<A::Index>;
 
-    /// Repeatedly removes prefixes of the hay which matches the pattern.
+    /// Repeatedly removes prefixes of the hay which matches the needle.
     ///
     /// This method is used to implement the standard algorithm
     /// [`trim_start()`](::ext::trim_start).
@@ -204,18 +204,18 @@ pub unsafe trait Consumer<A: Hay + ?Sized> {
     ///
     /// A fast generic implementation in terms of
     /// [`.consume()`](Consumer::consume) is provided by default. Nevertheless,
-    /// many patterns allow a higher-performance specialization.
+    /// many needles allow a higher-performance specialization.
     ///
     /// # Examples
     ///
     /// ```rust
     /// extern crate pattern_3;
-    /// use pattern_3::{Consumer, Pattern, Span};
+    /// use pattern_3::{Consumer, Needle, Span};
     ///
-    /// let mut consumer = Pattern::<&str>::into_consumer('x');
+    /// let mut consumer = Needle::<&str>::into_consumer('x');
     /// assert_eq!(consumer.trim_start("xxxyy"), 3);
     ///
-    /// let mut consumer = Pattern::<&str>::into_consumer('x');
+    /// let mut consumer = Needle::<&str>::into_consumer('x');
     /// assert_eq!(consumer.trim_start("yyxxx"), 0);
     /// ```
     #[inline]
@@ -237,7 +237,7 @@ pub unsafe trait Consumer<A: Hay + ?Sized> {
 /// A searcher which can be searched from the end.
 ///
 /// This trait provides methods for searching for non-overlapping matches of a
-/// pattern starting from the back (right) of a hay.
+/// needle starting from the back (right) of a hay.
 ///
 /// # Safety
 ///
@@ -245,7 +245,7 @@ pub unsafe trait Consumer<A: Hay + ?Sized> {
 /// required to lie on valid codeword boundaries in the haystack. This enables
 /// users of this trait to slice the haystack without additional runtime checks.
 pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
-    /// Searches for the last range which the pattern can be found in the span.
+    /// Searches for the last range which the needle can be found in the span.
     ///
     /// This method is used to support the following standard algorithms:
     ///
@@ -263,7 +263,7 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
     /// should be relative to the hay and must be contained within the
     /// restricted range from the span.
     ///
-    /// If the pattern is not found, this method should return `None`.
+    /// If the needle is not found, this method should return `None`.
     ///
     /// # Examples
     ///
@@ -272,9 +272,9 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
     ///
     /// ```
     /// extern crate pattern_3;
-    /// use pattern_3::{ReverseSearcher, Pattern, Span};
+    /// use pattern_3::{ReverseSearcher, Needle, Span};
     ///
-    /// let mut searcher = Pattern::<&str>::into_searcher("::");
+    /// let mut searcher = Needle::<&str>::into_searcher("::");
     /// let span = Span::from("lion::tiger::leopard");
     /// //                     ^   ^      ^
     /// // string indices:     0   4     11
@@ -297,7 +297,7 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
 
 /// A consumer which can be searched from the end.
 ///
-/// This trait provides methods for matching a pattern anchored at the end of a
+/// This trait provides methods for matching a needle anchored at the end of a
 /// hay.
 ///
 /// # Safety
@@ -306,18 +306,18 @@ pub unsafe trait ReverseSearcher<A: Hay + ?Sized>: Searcher<A> {
 /// required to lie on valid codeword boundaries in the haystack. This enables
 /// users of this trait to slice the haystack without additional runtime checks.
 pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
-    /// Checks if the pattern can be found at the end of the span.
+    /// Checks if the needle can be found at the end of the span.
     ///
     /// This method is used to implement the standard algorithm
     /// [`ends_with()`](::ext::ends_with) as well as providing the default
     /// implementation for [`.trim_end()`](ReverseConsumer::trim_end).
     ///
     /// The hay and the restricted range for searching can be recovered by
-    /// calling `span`[`.into_parts()`](Span::into_parts). If a pattern can be
+    /// calling `span`[`.into_parts()`](Span::into_parts). If a needle can be
     /// found ending at `range.end`, this method should return the start index
-    /// of the pattern relative to the hay.
+    /// of the needle relative to the hay.
     ///
-    /// If the pattern cannot be found at the end of the span, this method
+    /// If the needle cannot be found at the end of the span, this method
     /// should return `None`.
     ///
     /// # Examples
@@ -326,9 +326,9 @@ pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
     ///
     /// ```
     /// extern crate pattern_3;
-    /// use pattern_3::{ReverseConsumer, Pattern, Span};
+    /// use pattern_3::{ReverseConsumer, Needle, Span};
     ///
-    /// let mut consumer = Pattern::<&str>::into_consumer(|c: char| c.is_ascii());
+    /// let mut consumer = Needle::<&str>::into_consumer(|c: char| c.is_ascii());
     /// let span = Span::from("Hi😋!!");
     ///
     /// // consumes the last ASCII character
@@ -346,25 +346,25 @@ pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
     /// ```
     fn rconsume(&mut self, hay: Span<&A>) -> Option<A::Index>;
 
-    /// Repeatedly removes suffixes of the hay which matches the pattern.
+    /// Repeatedly removes suffixes of the hay which matches the needle.
     ///
     /// This method is used to implement the standard algorithm
     /// [`trim_end()`](::ext::trim_end).
     ///
     /// A fast generic implementation in terms of
     /// [`.rconsume()`](ReverseConsumer::rconsume) is provided by default.
-    /// Nevertheless, many patterns allow a higher-performance specialization.
+    /// Nevertheless, many needles allow a higher-performance specialization.
     ///
     /// # Examples
     ///
     /// ```rust
     /// extern crate pattern_3;
-    /// use pattern_3::{ReverseConsumer, Pattern, Span};
+    /// use pattern_3::{ReverseConsumer, Needle, Span};
     ///
-    /// let mut consumer = Pattern::<&str>::into_consumer('x');
+    /// let mut consumer = Needle::<&str>::into_consumer('x');
     /// assert_eq!(consumer.trim_end("yyxxx"), 2);
     ///
-    /// let mut consumer = Pattern::<&str>::into_consumer('x');
+    /// let mut consumer = Needle::<&str>::into_consumer('x');
     /// assert_eq!(consumer.trim_end("xxxyy"), 5);
     /// ```
     #[inline]
@@ -407,7 +407,7 @@ pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
 /// extern crate pattern_3;
 /// use pattern_3::ext::{match_indices, rmatch_indices};
 ///
-/// // `match_indices` and `rmatch_indices` are exact reverse of each other for a `char` pattern.
+/// // `match_indices` and `rmatch_indices` are exact reverse of each other for a `char` needle.
 /// let forward = match_indices("xxxxx", 'x').collect::<Vec<_>>();
 /// let mut rev_backward = rmatch_indices("xxxxx", 'x').collect::<Vec<_>>();
 /// rev_backward.reverse();
@@ -416,7 +416,7 @@ pub unsafe trait ReverseConsumer<A: Hay + ?Sized>: Consumer<A> {
 /// assert_eq!(rev_backward, vec![(0, "x"), (1, "x"), (2, "x"), (3, "x"), (4, "x")]);
 /// assert_eq!(forward, rev_backward);
 ///
-/// // this property does not exist on a `&str` pattern in general.
+/// // this property does not exist on a `&str` needle in general.
 /// let forward = match_indices("xxxxx", "xx").collect::<Vec<_>>();
 /// let mut rev_backward = rmatch_indices("xxxxx", "xx").collect::<Vec<_>>();
 /// rev_backward.reverse();
@@ -464,42 +464,42 @@ pub unsafe trait DoubleEndedSearcher<A: Hay + ?Sized>: ReverseSearcher<A> {}
 /// ```
 pub unsafe trait DoubleEndedConsumer<A: Hay + ?Sized>: ReverseConsumer<A> {}
 
-/// A pattern, a type which can be converted into a searcher.
+/// A needle, a type which can be converted into a searcher.
 ///
 /// When using search algorithms like [`split()`](::ext::split), users will
-/// search with a `Pattern` e.g. a `&str`. A pattern is usually stateless,
+/// search with a `Needle` e.g. a `&str`. A needle is usually stateless,
 /// however for efficient searching, we often need some preprocessing and
 /// maintain a mutable state. The preprocessed structure is called the
-/// [`Searcher`] of this pattern.
+/// [`Searcher`] of this needle.
 ///
-/// The relationship between `Searcher` and `Pattern` is similar to `Iterator`
+/// The relationship between `Searcher` and `Needle` is similar to `Iterator`
 /// and `IntoIterator`.
-pub trait Pattern<H: Haystack>: Sized
+pub trait Needle<H: Haystack>: Sized
 where H::Target: Hay // FIXME: RFC 2089 or 2289
 {
-    /// The searcher associated with this pattern.
+    /// The searcher associated with this needle.
     type Searcher: Searcher<H::Target>;
 
-    /// The consumer associated with this pattern.
+    /// The consumer associated with this needle.
     type Consumer: Consumer<H::Target>;
 
-    /// Produces a searcher for this pattern.
+    /// Produces a searcher for this needle.
     fn into_searcher(self) -> Self::Searcher;
 
-    /// Produces a consumer for this pattern.
+    /// Produces a consumer for this needle.
     ///
     /// Usually a consumer and a searcher can be the same type.
-    /// Some patterns may require different types
+    /// Some needles may require different types
     /// when the two need different optimization strategies. String searching
     /// is an example of this: we use the Two-Way Algorithm when searching for
-    /// substrings, which needs to preprocess the pattern. However this is
+    /// substrings, which needs to preprocess the needle. However this is
     /// irrelevant for consuming, which only needs to check for string equality
     /// once. Therefore the Consumer for a string would be a distinct type
     /// using naive search.
     fn into_consumer(self) -> Self::Consumer;
 }
 
-/// Searcher of an empty pattern.
+/// Searcher of an empty needle.
 ///
 /// This searcher will find all empty subslices between any codewords in a
 /// haystack.

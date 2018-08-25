@@ -2,7 +2,7 @@
 name = "pattern-3"
 version = "0.4.0"
 authors = ["kennytm <kennytm@gmail.com>"]
-description = "Pattern API 3.0, generalization of `std::str::pattern`"
+description = "Needle API (a.k.a. Pattern API 3.0), generalization of `std::str::pattern`"
 repository = "https://github.com/kennytm/pattern-3"
 license = "MIT"
 

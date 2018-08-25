@@ -1,4 +1,4 @@
-use pattern::*;
+use needle::*;
 use haystack::Span;
 use std::ops::Range;
 
@@ -118,9 +118,9 @@ unsafe impl<F: FnMut(char) -> bool> ReverseConsumer<str> for MultiCharSearcher<F
 unsafe impl<F: FnMut(char) -> bool> DoubleEndedSearcher<str> for MultiCharSearcher<F> {}
 unsafe impl<F: FnMut(char) -> bool> DoubleEndedConsumer<str> for MultiCharSearcher<F> {}
 
-macro_rules! impl_pattern {
+macro_rules! impl_needle {
     ($ty:ty) => {
-        impl<'h, F: FnMut(char) -> bool> Pattern<$ty> for F {
+        impl<'h, F: FnMut(char) -> bool> Needle<$ty> for F {
             type Searcher = MultiCharSearcher<F>;
             type Consumer = MultiCharSearcher<F>;
 
@@ -135,7 +135,7 @@ macro_rules! impl_pattern {
             }
         }
 
-        impl<'h, 'p> Pattern<$ty> for &'p [char] {
+        impl<'h, 'p> Needle<$ty> for &'p [char] {
             type Searcher = MultiCharSearcher<MultiCharEq<'p>>;
             type Consumer = MultiCharSearcher<MultiCharEq<'p>>;
 
@@ -152,5 +152,5 @@ macro_rules! impl_pattern {
     }
 }
 
-impl_pattern!(&'h str);
-impl_pattern!(&'h mut str);
+impl_needle!(&'h str);
+impl_needle!(&'h mut str);

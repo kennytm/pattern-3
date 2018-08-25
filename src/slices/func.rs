@@ -1,4 +1,4 @@
-use pattern::*;
+use needle::*;
 use haystack::Span;
 use std::ops::Range;
 
@@ -6,9 +6,9 @@ pub struct ElemSearcher<F> {
     predicate: F,
 }
 
-macro_rules! impl_pattern {
+macro_rules! impl_needle {
     (<[$($gen:tt)*]> $ty:ty) => {
-        impl<$($gen)*> Pattern<$ty> for F
+        impl<$($gen)*> Needle<$ty> for F
         where
             F: FnMut(&T) -> bool,
         {
@@ -32,10 +32,10 @@ macro_rules! impl_pattern {
     }
 }
 
-impl_pattern!(<['h, T, F]> &'h [T]);
-impl_pattern!(<['h, T, F]> &'h mut [T]);
+impl_needle!(<['h, T, F]> &'h [T]);
+impl_needle!(<['h, T, F]> &'h mut [T]);
 #[cfg(feature = "std")]
-impl_pattern!(<[T, F]> Vec<T>);
+impl_needle!(<[T, F]> Vec<T>);
 
 unsafe impl<T, F> Searcher<[T]> for ElemSearcher<F>
 where

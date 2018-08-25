@@ -1,4 +1,4 @@
-use pattern::*;
+use needle::*;
 use haystack::{Hay, Span};
 use std::cmp::{Ordering, max, min};
 use std::usize;
@@ -561,9 +561,9 @@ where
     }
 }
 
-macro_rules! impl_pattern {
+macro_rules! impl_needle {
     (<[$($gen:tt)*]> $ty:ty) => {
-        impl<$($gen)*> Pattern<$ty> for &'p [T]
+        impl<$($gen)*> Needle<$ty> for &'p [T]
         where
             T: PartialEq + 'p,
         {
@@ -583,7 +583,7 @@ macro_rules! impl_pattern {
     }
 }
 
-impl_pattern!(<['p, 'h, T]> &'h [T]);
-impl_pattern!(<['p, 'h, T]> &'h mut [T]);
+impl_needle!(<['p, 'h, T]> &'h [T]);
+impl_needle!(<['p, 'h, T]> &'h mut [T]);
 #[cfg(feature = "std")]
-impl_pattern!(<['p, T]> Vec<T>);
+impl_needle!(<['p, T]> Vec<T>);

@@ -539,7 +539,7 @@ where
     T: PartialEq + 'p,
 {}
 
-impl<'h, 'p, T> Pattern<&'h Slice<T>> for ElemSearcher<'p, T>
+impl<'h, 'p, T> Needle<&'h Slice<T>> for ElemSearcher<'p, T>
 where
     T: PartialEq + 'p
 {
@@ -549,7 +549,7 @@ where
     fn into_consumer(self) -> Self::Consumer { self }
 }
 
-impl<'h, 'p, T> Pattern<DList<T>> for ElemSearcher<'p, T>
+impl<'h, 'p, T> Needle<DList<T>> for ElemSearcher<'p, T>
 where
     T: PartialEq + 'p
 {
@@ -562,11 +562,11 @@ where
 //------------------------------------------------------------------------------
 // Implement the searcher for empty pattern
 
-struct EmptyPattern;
+struct EmptyNeedle;
 
-impl<'h, T> Pattern<DList<T>> for EmptyPattern {
-    type Searcher = pattern::EmptySearcher;
-    type Consumer = pattern::EmptySearcher;
+impl<'h, T> Needle<DList<T>> for EmptyNeedle {
+    type Searcher = needle::EmptySearcher;
+    type Consumer = needle::EmptySearcher;
     fn into_searcher(self) -> Self::Searcher { Self::Searcher::default() }
     fn into_consumer(self) -> Self::Consumer { Self::Consumer::default() }
 }
@@ -620,7 +620,7 @@ fn test_empty_pattern_api() {
     list.push_back(2);
 
     assert_eq!(
-        ext::split(list, EmptyPattern)
+        ext::split(list, EmptyNeedle)
             .map(|s| { eprintln!("{:?}..{:?}", s.start_cursor(), s.end_cursor()); s.iter().cloned().collect::<Vec<_>>() })
             .collect::<Vec<_>>(),
         vec![

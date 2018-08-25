@@ -1,5 +1,5 @@
 use haystack::{Hay, Haystack, Span};
-use pattern::{Pattern, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
+use needle::{Needle, Searcher, ReverseSearcher, DoubleEndedSearcher, Consumer, ReverseConsumer, DoubleEndedConsumer};
 use std::iter::FusedIterator;
 use std::ops::Range;
 use std::fmt;
@@ -168,24 +168,24 @@ macro_rules! generate_pattern_iterators {
 // Starts with / Ends with
 //------------------------------------------------------------------------------
 
-pub fn starts_with<H, P>(haystack: H, pattern: P) -> bool
+pub fn starts_with<H, P>(haystack: H, needle: P) -> bool
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_consumer().consume((*haystack).into()).is_some()
+    needle.into_consumer().consume((*haystack).into()).is_some()
 }
 
 #[inline]
-pub fn ends_with<H, P>(haystack: H, pattern: P) -> bool
+pub fn ends_with<H, P>(haystack: H, needle: P) -> bool
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Consumer: ReverseConsumer<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_consumer().rconsume((*haystack).into()).is_some()
+    needle.into_consumer().rconsume((*haystack).into()).is_some()
 }
 
 //------------------------------------------------------------------------------
@@ -193,45 +193,45 @@ where
 //------------------------------------------------------------------------------
 
 #[inline]
-pub fn trim_start<H, P>(haystack: H, pattern: P) -> H
+pub fn trim_start<H, P>(haystack: H, needle: P) -> H
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let range = {
         let hay = &*haystack;
-        let start = pattern.into_consumer().trim_start(hay);
+        let start = needle.into_consumer().trim_start(hay);
         let end = hay.end_index();
         start..end
     };
     unsafe { haystack.slice_unchecked(range) }
 }
 
-pub fn trim_end<H, P>(haystack: H, pattern: P) -> H
+pub fn trim_end<H, P>(haystack: H, needle: P) -> H
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Consumer: ReverseConsumer<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     let range = {
         let hay = &*haystack;
         let start = hay.start_index();
-        let end = pattern.into_consumer().trim_end(hay);
+        let end = needle.into_consumer().trim_end(hay);
         start..end
     };
     unsafe { haystack.slice_unchecked(range) }
 }
 
-pub fn trim<H, P>(haystack: H, pattern: P) -> H
+pub fn trim<H, P>(haystack: H, needle: P) -> H
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Consumer: DoubleEndedConsumer<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    let mut checker = pattern.into_consumer();
+    let mut checker = needle.into_consumer();
     let range = {
         let hay = &*haystack;
         let end = checker.trim_end(hay);
@@ -309,38 +309,38 @@ generate_pattern_iterators! {
     delegate double ended;
 }
 
-pub fn matches<H, P>(haystack: H, pattern: P) -> Matches<H, P::Searcher>
+pub fn matches<H, P>(haystack: H, needle: P) -> Matches<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     Matches(MatchesInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
     })
 }
 
-pub fn rmatches<H, P>(haystack: H, pattern: P) -> RMatches<H, P::Searcher>
+pub fn rmatches<H, P>(haystack: H, needle: P) -> RMatches<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RMatches(MatchesInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
     })
 }
 
-pub fn contains<H, P>(haystack: H, pattern: P) -> bool
+pub fn contains<H, P>(haystack: H, needle: P) -> bool
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_searcher()
+    needle.into_searcher()
         .search((*haystack).into())
         .is_some()
 }
@@ -398,49 +398,49 @@ generate_pattern_iterators! {
     delegate double ended;
 }
 
-pub fn match_indices<H, P>(haystack: H, pattern: P) -> MatchIndices<H, P::Searcher>
+pub fn match_indices<H, P>(haystack: H, needle: P) -> MatchIndices<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     MatchIndices(MatchIndicesInternal {
-        inner: matches(haystack, pattern).0,
+        inner: matches(haystack, needle).0,
     })
 }
 
-pub fn rmatch_indices<H, P>(haystack: H, pattern: P) -> RMatchIndices<H, P::Searcher>
+pub fn rmatch_indices<H, P>(haystack: H, needle: P) -> RMatchIndices<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RMatchIndices(MatchIndicesInternal {
-        inner: rmatches(haystack, pattern).0,
+        inner: rmatches(haystack, needle).0,
     })
 }
 
 #[inline]
-pub fn find<H, P>(haystack: H, pattern: P) -> Option<<H::Target as Hay>::Index>
+pub fn find<H, P>(haystack: H, needle: P) -> Option<<H::Target as Hay>::Index>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_searcher()
+    needle.into_searcher()
         .search((*haystack).into())
         .map(|r| r.start)
 }
 
-pub fn rfind<H, P>(haystack: H, pattern: P) -> Option<<H::Target as Hay>::Index>
+pub fn rfind<H, P>(haystack: H, needle: P) -> Option<<H::Target as Hay>::Index>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_searcher()
+    needle.into_searcher()
         .rsearch((*haystack).into())
         .map(|r| r.start)
 }
@@ -498,47 +498,47 @@ generate_pattern_iterators! {
     delegate double ended;
 }
 
-pub fn match_ranges<H, P>(haystack: H, pattern: P) -> MatchRanges<H, P::Searcher>
+pub fn match_ranges<H, P>(haystack: H, needle: P) -> MatchRanges<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     MatchRanges(MatchRangesInternal {
-        inner: matches(haystack, pattern).0,
+        inner: matches(haystack, needle).0,
     })
 }
 
-pub fn rmatch_ranges<H, P>(haystack: H, pattern: P) -> RMatchRanges<H, P::Searcher>
+pub fn rmatch_ranges<H, P>(haystack: H, needle: P) -> RMatchRanges<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RMatchRanges(MatchRangesInternal {
-        inner: rmatches(haystack, pattern).0,
+        inner: rmatches(haystack, needle).0,
     })
 }
 
-pub fn find_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Target as Hay>::Index>>
+pub fn find_range<H, P>(haystack: H, needle: P) -> Option<Range<<H::Target as Hay>::Index>>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_searcher()
+    needle.into_searcher()
         .search((*haystack).into())
 }
 
-pub fn rfind_range<H, P>(haystack: H, pattern: P) -> Option<Range<<H::Target as Hay>::Index>>
+pub fn rfind_range<H, P>(haystack: H, needle: P) -> Option<Range<<H::Target as Hay>::Index>>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
-    pattern.into_searcher()
+    needle.into_searcher()
         .rsearch((*haystack).into())
 }
 
@@ -646,58 +646,58 @@ generate_pattern_iterators! {
     delegate double ended;
 }
 
-pub fn split<H, P>(haystack: H, pattern: P) -> Split<H, P::Searcher>
+pub fn split<H, P>(haystack: H, needle: P) -> Split<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     Split(SplitInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
         finished: false,
         allow_trailing_empty: true,
     })
 }
 
-pub fn rsplit<H, P>(haystack: H, pattern: P) -> RSplit<H, P::Searcher>
+pub fn rsplit<H, P>(haystack: H, needle: P) -> RSplit<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RSplit(SplitInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
         finished: false,
         allow_trailing_empty: true,
     })
 }
 
-pub fn split_terminator<H, P>(haystack: H, pattern: P) -> SplitTerminator<H, P::Searcher>
+pub fn split_terminator<H, P>(haystack: H, needle: P) -> SplitTerminator<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     SplitTerminator(SplitInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
         finished: false,
         allow_trailing_empty: false,
     })
 }
 
-pub fn rsplit_terminator<H, P>(haystack: H, pattern: P) -> RSplitTerminator<H, P::Searcher>
+pub fn rsplit_terminator<H, P>(haystack: H, needle: P) -> RSplitTerminator<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RSplitTerminator(SplitInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
         finished: false,
         allow_trailing_empty: false,
@@ -798,28 +798,28 @@ generate_pattern_iterators! {
     delegate single ended;
 }
 
-pub fn splitn<H, P>(haystack: H, n: usize, pattern: P) -> SplitN<H, P::Searcher>
+pub fn splitn<H, P>(haystack: H, n: usize, needle: P) -> SplitN<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     SplitN(SplitNInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
         n,
     })
 }
 
-pub fn rsplitn<H, P>(haystack: H, n: usize, pattern: P) -> RSplitN<H, P::Searcher>
+pub fn rsplitn<H, P>(haystack: H, n: usize, needle: P) -> RSplitN<H, P::Searcher>
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     P::Searcher: ReverseSearcher<H::Target>,
     H::Target: Hay, // FIXME: RFC 2089 or 2289
 {
     RSplitN(SplitNInternal {
-        searcher: pattern.into_searcher(),
+        searcher: needle.into_searcher(),
         rest: haystack.into(),
         n,
     })
@@ -832,7 +832,7 @@ where
 pub fn replace_with<H, P, F, W>(src: H, from: P, mut replacer: F, mut writer: W)
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     F: FnMut(H) -> H,
     W: FnMut(H),
     H::Target: Hay, // FIXME: RFC 2089 or 2289
@@ -851,7 +851,7 @@ where
 pub fn replacen_with<H, P, F, W>(src: H, from: P, mut replacer: F, mut n: usize, mut writer: W)
 where
     H: Haystack,
-    P: Pattern<H>,
+    P: Needle<H>,
     F: FnMut(H) -> H,
     W: FnMut(H),
     H::Target: Hay, // FIXME: RFC 2089 or 2289

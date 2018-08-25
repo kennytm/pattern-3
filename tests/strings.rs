@@ -526,9 +526,9 @@ fn trim_ws() {
 
 #[test]
 fn different_str_pattern_forwarding_lifetimes() {
-    use pattern_3::Pattern;
+    use pattern_3::Needle;
 
-    fn foo<'a, P>(p: P) where for<'b> &'b P: Pattern<&'a str> {
+    fn foo<'a, P>(p: P) where for<'b> &'b P: Needle<&'a str> {
         for _ in 0..3 {
             find("asdf", &p);
         }
@@ -558,10 +558,10 @@ fn test_trim_strings() {
     assert_eq!(trim_end("ababababa", "ba"), "a");
 }
 
-// fn str_replacen<'a>(src: &'a str, from: impl pattern_3::Pattern<&'a str>, to: &'a str, n: usize) -> String {
+// fn str_replacen<'a>(src: &'a str, from: impl pattern_3::Needle<&'a str>, to: &'a str, n: usize) -> String {
 fn str_replacen<'a, P>(src: &'a str, from: P, to: &'a str, n: usize) -> String
 where
-    P: Pattern<&'a str>,
+    P: Needle<&'a str>,
     P::Searcher: Searcher<str>, // FIXME: RFC 2089
     P::Consumer: Consumer<str>,
 {
@@ -572,7 +572,7 @@ where
 
 fn str_replace<'a, P>(src: &'a str, from: P, to: &'a str) -> String
 where
-    P: Pattern<&'a str>,
+    P: Needle<&'a str>,
     P::Searcher: Searcher<str>, // FIXME: RFC 2089
     P::Consumer: Consumer<str>,
 {
